@@ -1,0 +1,17 @@
+PASSED
+idgp_dc2_score, P1-GP, scored once against addendum C.
+
+
+---
+
+# DC2 P1-GP (addendum C), scored 2026-09-28 19:14
+
+Frozen arm G ({'arm': 'G', 'head': 'gb', 'fusion': 'concat', 'form': 'cor', 'scope': 'a', 'margin': '0 or 0.5 s by the day 1 person ICC of the fused cadence', 'training': 'DC2 day 1 natural A_fwd passes only; no Room A model transfers'}), margin 0.0 s.
+
+| row | accuracy % | 95% interval | p | n |
+|---|---|---|---|---|
+| P1-GP | 30.0 | [13.25, 60.0] | 0.1379 | 30 |
+| S0, same passes | 40.0 | [10.0, 73.33] | 0.044 | 30 |
+
+Arm minus S0: -10.0 [np.float64(-43.33), np.float64(20.0)]; check 1 FAILS. Name: gait without pace, not above speed. Pace blocks: NOT DECIDABLE: S0 does not drop on both pace blocks.
+

@@ -1,0 +1,398 @@
+[2026-09-24T17:37:51] f4_phase_s0103_to_s02 START: the operator-assisted live demonstration. verdict passed=True; motion model 0.649 m per window
+[2026-09-24T17:37:54]   rendering from the SHIPPED POOL: {'heads': 5, 'heads_max': 5, 'half_stride_heads': 1, 'one_second_seeds': [0, 1, 2], 'gate_head_g100': True, 'weighting': 'EQUAL. No head is chosen or weighted by its result.'}
+[2026-09-24T17:38:34]   shipped Part 2 arm: {'entry_window_m': 1.0, 'start_weight': 0.5}, start terms for 120 passes
+[2026-09-24T17:38:34]   mid-walk switching: {'arm': 'C', 'theta': 2.0, 'max_switches': 1, 'final_m': 1.5, 'radius_m': 1.5, 'band': ['A_t2', 'B_t2', 'C_t2'], 'top_agreement': 647}
+[2026-09-24T17:38:35]   shipped display arm: DISP_END
+[2026-09-24T17:38:49]   PA5: FAILED IndexError('list index out of range')
+[2026-09-24T17:39:04]   PA1: FAILED IndexError('list index out of range')
+[2026-09-24T17:39:18]   PA2: FAILED IndexError('list index out of range')
+[2026-09-24T17:39:32]   PA3: FAILED IndexError('list index out of range')
+[2026-09-24T17:39:46]   PA4: FAILED IndexError('list index out of range')
+[2026-09-24T17:40:00]   PA6: FAILED IndexError('list index out of range')
+[2026-09-24T17:40:20] f4_phase_s0103_to_s02 START: the operator-assisted live demonstration. verdict passed=True; motion model 0.649 m per window
+[2026-09-24T17:40:23]   rendering from the SHIPPED POOL: {'heads': 5, 'heads_max': 5, 'half_stride_heads': 1, 'one_second_seeds': [0, 1, 2], 'gate_head_g100': True, 'weighting': 'EQUAL. No head is chosen or weighted by its result.'}
+[2026-09-24T17:41:08]   shipped Part 2 arm: {'entry_window_m': 1.0, 'start_weight': 0.5}, start terms for 120 passes
+[2026-09-24T17:41:08]   mid-walk switching: {'arm': 'C', 'theta': 2.0, 'max_switches': 1, 'final_m': 1.5, 'radius_m': 1.5, 'band': ['A_t2', 'B_t2', 'C_t2'], 'top_agreement': 647}
+[2026-09-24T17:41:08]   shipped display arm: DISP_END
+[2026-09-24T17:41:23]   PA5: phase sweep over 14 lock-correct walks
+[2026-09-24T17:41:38]   PA1: phase sweep over 10 lock-correct walks
+[2026-09-24T17:41:51]   PA2: phase sweep over 14 lock-correct walks
+[2026-09-24T17:42:03]   PA3: phase sweep over 10 lock-correct walks
+[2026-09-24T17:42:16]   PA4: phase sweep over 17 lock-correct walks
+[2026-09-24T17:42:29]   PA6: phase sweep over 10 lock-correct walks
+[2026-09-24T17:42:29]   s0103_to_s02 head offset 0.750: ahead  69.4%  mean +0.190 m  bounds -1.000/-1.000 s
+[2026-09-24T17:42:29]   s0103_to_s02 head offset 0.625: ahead  62.1%  mean +0.037 m  bounds -1.125/-1.125 s
+[2026-09-24T17:42:29]   s0103_to_s02 head offset 0.500: ahead  50.4%  mean -0.119 m  bounds -1.251/-1.251 s
+[2026-09-24T17:42:29]   s0103_to_s02 head offset 0.375: ahead  39.5%  mean -0.278 m  bounds -1.377/-1.377 s
+[2026-09-24T17:42:29]   s0103_to_s02 head offset 0.250: ahead  27.4%  mean -0.440 m  bounds -1.500/-1.500 s
+[2026-09-24T17:42:29]   s0103_to_s02 head offset 0.125: ahead  15.1%  mean -0.605 m  bounds -1.625/-1.625 s
+[2026-09-24T17:42:29]   s0103_to_s02 head offset 0.000: ahead   7.1%  mean -0.772 m  bounds -1.751/-1.751 s
+[2026-09-24T17:44:06] f4_preview START: the operator-assisted live demonstration. verdict passed=True; motion model 0.649 m per window
+[2026-09-24T17:44:08]   rendering from the SHIPPED POOL: {'heads': 5, 'heads_max': 5, 'half_stride_heads': 1, 'one_second_seeds': [0, 1, 2], 'gate_head_g100': True, 'weighting': 'EQUAL. No head is chosen or weighted by its result.'}
+[2026-09-24T17:44:18] f4_phase_s02_to_s03 START: the operator-assisted live demonstration. verdict passed=True; motion model 0.649 m per window
+[2026-09-24T17:44:18] f4_phase_s0102_to_s03 START: the operator-assisted live demonstration. verdict passed=True; motion model 0.649 m per window
+[2026-09-24T17:44:20]   rendering from the SHIPPED POOL: {'heads': 5, 'heads_max': 5, 'half_stride_heads': 1, 'one_second_seeds': [0, 1, 2], 'gate_head_g100': True, 'weighting': 'EQUAL. No head is chosen or weighted by its result.'}
+[2026-09-24T17:44:21]   rendering from the SHIPPED POOL: {'heads': 5, 'heads_max': 5, 'half_stride_heads': 1, 'one_second_seeds': [0, 1, 2], 'gate_head_g100': True, 'weighting': 'EQUAL. No head is chosen or weighted by its result.'}
+[2026-09-24T17:44:43]   shipped Part 2 arm: {'entry_window_m': 1.0, 'start_weight': 0.5}, start terms for 120 passes
+[2026-09-24T17:44:43]   mid-walk switching: {'arm': 'C', 'theta': 2.0, 'max_switches': 1, 'final_m': 1.5, 'radius_m': 1.5, 'band': ['A_t2', 'B_t2', 'C_t2'], 'top_agreement': 647}
+[2026-09-24T17:44:43]   shipped display arm: DISP_END
+[2026-09-24T17:44:48]   shipped Part 2 arm: {'entry_window_m': 1.0, 'start_weight': 0.5}, start terms for 120 passes
+[2026-09-24T17:44:48]   mid-walk switching: {'arm': 'C', 'theta': 2.0, 'max_switches': 1, 'final_m': 1.5, 'radius_m': 1.5, 'band': ['A_t2', 'B_t2', 'C_t2'], 'top_agreement': 647}
+[2026-09-24T17:44:48]   shipped display arm: DISP_END
+[2026-09-24T17:44:57]   PA5: phase sweep over 9 lock-correct walks
+[2026-09-24T17:45:03]   shipped Part 2 arm: {'entry_window_m': 1.0, 'start_weight': 0.5}, start terms for 120 passes
+[2026-09-24T17:45:03]   mid-walk switching: {'arm': 'C', 'theta': 2.0, 'max_switches': 1, 'final_m': 1.5, 'radius_m': 1.5, 'band': ['A_t2', 'B_t2', 'C_t2'], 'top_agreement': 647}
+[2026-09-24T17:45:03]   shipped display arm: DISP_END
+[2026-09-24T17:45:12]   PA1: phase sweep over 12 lock-correct walks
+[2026-09-24T17:45:18]   PA5: phase sweep over 10 lock-correct walks
+[2026-09-24T17:45:27]   PA2: phase sweep over 9 lock-correct walks
+[2026-09-24T17:45:34]   PA1: phase sweep over 15 lock-correct walks
+[2026-09-24T17:45:42]   PA3: phase sweep over 14 lock-correct walks
+[2026-09-24T17:45:49]   PA2: phase sweep over 13 lock-correct walks
+[2026-09-24T17:45:59]   PA4: phase sweep over 10 lock-correct walks
+[2026-09-24T17:46:05]   PA3: phase sweep over 15 lock-correct walks
+[2026-09-24T17:46:15]   PA6: phase sweep over 15 lock-correct walks
+[2026-09-24T17:46:15]   s02_to_s03 head offset 0.750: ahead  59.1%  mean +0.059 m  bounds -1.000/-1.000 s
+[2026-09-24T17:46:15]   s02_to_s03 head offset 0.625: ahead  49.9%  mean -0.093 m  bounds -1.128/-1.128 s
+[2026-09-24T17:46:15]   s02_to_s03 head offset 0.500: ahead  40.0%  mean -0.248 m  bounds -1.251/-1.251 s
+[2026-09-24T17:46:15]   s02_to_s03 head offset 0.375: ahead  30.8%  mean -0.405 m  bounds -1.375/-1.375 s
+[2026-09-24T17:46:15]   s02_to_s03 head offset 0.250: ahead  23.4%  mean -0.568 m  bounds -1.500/-1.500 s
+[2026-09-24T17:46:15]   s02_to_s03 head offset 0.125: ahead  18.1%  mean -0.732 m  bounds -1.628/-1.628 s
+[2026-09-24T17:46:15]   s02_to_s03 head offset 0.000: ahead  11.9%  mean -0.898 m  bounds -1.751/-1.751 s
+[2026-09-24T17:46:16] f4_phase_s03_to_s01 START: the operator-assisted live demonstration. verdict passed=True; motion model 0.649 m per window
+[2026-09-24T17:46:18]   rendering from the SHIPPED POOL: {'heads': 5, 'heads_max': 5, 'half_stride_heads': 1, 'one_second_seeds': [0, 1, 2], 'gate_head_g100': True, 'weighting': 'EQUAL. No head is chosen or weighted by its result.'}
+[2026-09-24T17:46:20] f5_donor START: the donor swap over nine pairings, pre-registered
+[2026-09-24T17:46:22]   PA4: phase sweep over 15 lock-correct walks
+[2026-09-24T17:46:25]   PA6   20 walks, 20 committed correctly, tracking  32.3%, 20 switches, 0 rule violations, 0 frames without a dot, 3.65 MB
+[2026-09-24T17:46:25]   folder now 3 files, six videos and ACCEPTANCE.md = False
+[2026-09-24T17:46:25]   the one rule: 0 violations over 678 frames
+[2026-09-24T17:46:25]   dot present on every frame after the first legal one: 0 missing of 1215 expected; 0 of 3276 total frames have no dot, which is the listening periods and the gaps between walks
+[2026-09-24T17:46:25]   causal bound over every drawn frame: -1.377 s (must be <= 0)
+[2026-09-24T17:46:25]   jumps over 0.5 m: 20, of which 20 at the lock
+[2026-09-24T17:46:25]   on-screen tracking 32.25% within 0.5 m (before 3.35%), mean 0.90 m (before 2.04 m)
+[2026-09-24T17:46:25]   contract checks all pass: False
+[2026-09-24T17:46:25] f4_preview DONE in 2.3 min
+[2026-09-24T17:46:40]   PA6: phase sweep over 15 lock-correct walks
+[2026-09-24T17:46:40]   s0102_to_s03 head offset 0.750: ahead  67.6%  mean +0.175 m  bounds -1.000/-1.000 s
+[2026-09-24T17:46:40]   s0102_to_s03 head offset 0.625: ahead  57.3%  mean +0.025 m  bounds -1.128/-1.128 s
+[2026-09-24T17:46:40]   s0102_to_s03 head offset 0.500: ahead  44.3%  mean -0.128 m  bounds -1.251/-1.251 s
+[2026-09-24T17:46:40]   s0102_to_s03 head offset 0.375: ahead  34.7%  mean -0.282 m  bounds -1.375/-1.375 s
+[2026-09-24T17:46:40]   s0102_to_s03 head offset 0.250: ahead  27.3%  mean -0.440 m  bounds -1.500/-1.500 s
+[2026-09-24T17:46:40]   s0102_to_s03 head offset 0.125: ahead  19.6%  mean -0.600 m  bounds -1.628/-1.628 s
+[2026-09-24T17:46:40]   s0102_to_s03 head offset 0.000: ahead  12.4%  mean -0.762 m  bounds -1.751/-1.751 s
+[2026-09-24T17:46:41] f4_phase_s01_to_s02 START: the operator-assisted live demonstration. verdict passed=True; motion model 0.649 m per window
+[2026-09-24T17:46:44]   rendering from the SHIPPED POOL: {'heads': 5, 'heads_max': 5, 'half_stride_heads': 1, 'one_second_seeds': [0, 1, 2], 'gate_head_g100': True, 'weighting': 'EQUAL. No head is chosen or weighted by its result.'}
+[2026-09-24T17:46:56]   shipped Part 2 arm: {'entry_window_m': 1.0, 'start_weight': 0.5}, start terms for 120 passes
+[2026-09-24T17:46:56]   mid-walk switching: {'arm': 'C', 'theta': 2.0, 'max_switches': 1, 'final_m': 1.5, 'radius_m': 1.5, 'band': ['A_t2', 'B_t2', 'C_t2'], 'top_agreement': 647}
+[2026-09-24T17:46:57]   shipped display arm: DISP_END
+[2026-09-24T17:47:04]   s01_to_s02: 120 walks
+[2026-09-24T17:47:16]   PA5: phase sweep over 3 lock-correct walks
+[2026-09-24T17:47:23]   s01_to_s03: 120 walks
+[2026-09-24T17:47:23]   shipped Part 2 arm: {'entry_window_m': 1.0, 'start_weight': 0.5}, start terms for 120 passes
+[2026-09-24T17:47:23]   mid-walk switching: {'arm': 'C', 'theta': 2.0, 'max_switches': 1, 'final_m': 1.5, 'radius_m': 1.5, 'band': ['A_t2', 'B_t2', 'C_t2'], 'top_agreement': 647}
+[2026-09-24T17:47:24]   shipped display arm: DISP_END
+[2026-09-24T17:47:29]   s02_to_s01: 120 walks
+[2026-09-24T17:47:34]   s02_to_s03: 120 walks
+[2026-09-24T17:47:36]   PA1: phase sweep over 4 lock-correct walks
+[2026-09-24T17:47:40]   s03_to_s01: 120 walks
+[2026-09-24T17:47:42]   PA5: phase sweep over 12 lock-correct walks
+[2026-09-24T17:47:45]   s03_to_s02: 120 walks
+[2026-09-24T17:47:52]   s0203_to_s01: 120 walks
+[2026-09-24T17:47:54]   PA2: phase sweep over 2 lock-correct walks
+[2026-09-24T17:47:59]   s0103_to_s02: 120 walks
+[2026-09-24T17:48:01]   PA1: phase sweep over 11 lock-correct walks
+[2026-09-24T17:48:06]   s0102_to_s03: 120 walks
+[2026-09-24T17:48:06] f5_donor DONE: reproduction 1080/1080; own radio 63.3%, donor's radio: follows donor 61.1%, stays on own 3.4% (chance 8.3%); VALID True
+[2026-09-24T17:48:13]   PA3: phase sweep over 9 lock-correct walks
+[2026-09-24T17:48:18]   PA2: phase sweep over 12 lock-correct walks
+[2026-09-24T17:48:29]   PA4: phase sweep over 4 lock-correct walks
+[2026-09-24T17:48:33]   PA3: phase sweep over 8 lock-correct walks
+[2026-09-24T17:48:44]   PA6: phase sweep over 2 lock-correct walks
+[2026-09-24T17:48:44]   s03_to_s01 head offset 0.750: ahead  25.0%  mean -0.607 m  bounds -1.000/-1.000 s
+[2026-09-24T17:48:44]   s03_to_s01 head offset 0.625: ahead  21.5%  mean -0.745 m  bounds -1.127/-1.127 s
+[2026-09-24T17:48:44]   s03_to_s01 head offset 0.500: ahead  15.6%  mean -0.886 m  bounds -1.252/-1.252 s
+[2026-09-24T17:48:44]   s03_to_s01 head offset 0.375: ahead   9.0%  mean -1.026 m  bounds -1.376/-1.376 s
+[2026-09-24T17:48:44]   s03_to_s01 head offset 0.250: ahead   3.5%  mean -1.168 m  bounds -1.500/-1.500 s
+[2026-09-24T17:48:44]   s03_to_s01 head offset 0.125: ahead   1.5%  mean -1.312 m  bounds -1.627/-1.627 s
+[2026-09-24T17:48:44]   s03_to_s01 head offset 0.000: ahead   0.1%  mean -1.460 m  bounds -1.752/-1.752 s
+[2026-09-24T17:48:45] f4_phase_s03_to_s02 START: the operator-assisted live demonstration. verdict passed=True; motion model 0.649 m per window
+[2026-09-24T17:48:47]   rendering from the SHIPPED POOL: {'heads': 5, 'heads_max': 5, 'half_stride_heads': 1, 'one_second_seeds': [0, 1, 2], 'gate_head_g100': True, 'weighting': 'EQUAL. No head is chosen or weighted by its result.'}
+[2026-09-24T17:48:49]   PA4: phase sweep over 11 lock-correct walks
+[2026-09-24T17:49:04]   PA6: phase sweep over 13 lock-correct walks
+[2026-09-24T17:49:04]   s01_to_s02 head offset 0.750: ahead  56.6%  mean +0.021 m  bounds -1.000/-1.000 s
+[2026-09-24T17:49:04]   s01_to_s02 head offset 0.625: ahead  48.5%  mean -0.136 m  bounds -1.127/-1.127 s
+[2026-09-24T17:49:04]   s01_to_s02 head offset 0.500: ahead  38.0%  mean -0.294 m  bounds -1.251/-1.251 s
+[2026-09-24T17:49:04]   s01_to_s02 head offset 0.375: ahead  27.4%  mean -0.457 m  bounds -1.377/-1.377 s
+[2026-09-24T17:49:04]   s01_to_s02 head offset 0.250: ahead  16.3%  mean -0.622 m  bounds -1.500/-1.500 s
+[2026-09-24T17:49:04]   s01_to_s02 head offset 0.125: ahead   8.1%  mean -0.789 m  bounds -1.627/-1.627 s
+[2026-09-24T17:49:04]   s01_to_s02 head offset 0.000: ahead   2.7%  mean -0.953 m  bounds -1.751/-1.751 s
+[2026-09-24T17:49:05] f4_phase_s01_to_s03 START: the operator-assisted live demonstration. verdict passed=True; motion model 0.649 m per window
+[2026-09-24T17:49:07]   rendering from the SHIPPED POOL: {'heads': 5, 'heads_max': 5, 'half_stride_heads': 1, 'one_second_seeds': [0, 1, 2], 'gate_head_g100': True, 'weighting': 'EQUAL. No head is chosen or weighted by its result.'}
+[2026-09-24T17:49:10]   shipped Part 2 arm: {'entry_window_m': 1.0, 'start_weight': 0.5}, start terms for 120 passes
+[2026-09-24T17:49:10]   mid-walk switching: {'arm': 'C', 'theta': 2.0, 'max_switches': 1, 'final_m': 1.5, 'radius_m': 1.5, 'band': ['A_t2', 'B_t2', 'C_t2'], 'top_agreement': 647}
+[2026-09-24T17:49:10]   shipped display arm: DISP_END
+[2026-09-24T17:49:24] f4_render START: the operator-assisted live demonstration. verdict passed=True; motion model 0.649 m per window
+[2026-09-24T17:49:26]   PA5: phase sweep over 13 lock-correct walks
+[2026-09-24T17:49:28]   rendering from the SHIPPED POOL: {'heads': 5, 'heads_max': 5, 'half_stride_heads': 1, 'one_second_seeds': [0, 1, 2], 'gate_head_g100': True, 'weighting': 'EQUAL. No head is chosen or weighted by its result.'}
+[2026-09-24T17:49:42]   shipped Part 2 arm: {'entry_window_m': 1.0, 'start_weight': 0.5}, start terms for 120 passes
+[2026-09-24T17:49:42]   mid-walk switching: {'arm': 'C', 'theta': 2.0, 'max_switches': 1, 'final_m': 1.5, 'radius_m': 1.5, 'band': ['A_t2', 'B_t2', 'C_t2'], 'top_agreement': 647}
+[2026-09-24T17:49:42]   shipped display arm: DISP_END
+[2026-09-24T17:49:45]   PA1: phase sweep over 10 lock-correct walks
+[2026-09-24T17:50:00]   PA5: phase sweep over 7 lock-correct walks
+[2026-09-24T17:50:05]   PA2: phase sweep over 10 lock-correct walks
+[2026-09-24T17:50:19]   PA1: phase sweep over 11 lock-correct walks
+[2026-09-24T17:50:21]   shipped Part 2 arm: {'entry_window_m': 1.0, 'start_weight': 0.5}, start terms for 120 passes
+[2026-09-24T17:50:21]   mid-walk switching: {'arm': 'C', 'theta': 2.0, 'max_switches': 1, 'final_m': 1.5, 'radius_m': 1.5, 'band': ['A_t2', 'B_t2', 'C_t2'], 'top_agreement': 647}
+[2026-09-24T17:50:22]   shipped display arm: DISP_END
+[2026-09-24T17:50:24]   PA3: phase sweep over 9 lock-correct walks
+[2026-09-24T17:50:38]   PA2: phase sweep over 7 lock-correct walks
+[2026-09-24T17:50:44]   PA4: phase sweep over 15 lock-correct walks
+[2026-09-24T17:50:58]   PA3: phase sweep over 6 lock-correct walks
+[2026-09-24T17:51:04]   PA6: phase sweep over 7 lock-correct walks
+[2026-09-24T17:51:04]   s03_to_s02 head offset 0.750: ahead  57.3%  mean -0.049 m  bounds -1.000/-1.000 s
+[2026-09-24T17:51:04]   s03_to_s02 head offset 0.625: ahead  48.1%  mean -0.193 m  bounds -1.125/-1.125 s
+[2026-09-24T17:51:04]   s03_to_s02 head offset 0.500: ahead  37.4%  mean -0.339 m  bounds -1.251/-1.251 s
+[2026-09-24T17:51:04]   s03_to_s02 head offset 0.375: ahead  28.0%  mean -0.488 m  bounds -1.377/-1.377 s
+[2026-09-24T17:51:04]   s03_to_s02 head offset 0.250: ahead  19.8%  mean -0.641 m  bounds -1.500/-1.500 s
+[2026-09-24T17:51:04]   s03_to_s02 head offset 0.125: ahead  11.1%  mean -0.796 m  bounds -1.625/-1.625 s
+[2026-09-24T17:51:04]   s03_to_s02 head offset 0.000: ahead   4.5%  mean -0.952 m  bounds -1.751/-1.751 s
+[2026-09-24T17:51:05] f4_phase_s0203_to_s01 START: the operator-assisted live demonstration. verdict passed=True; motion model 0.649 m per window
+[2026-09-24T17:51:09]   rendering from the SHIPPED POOL: {'heads': 5, 'heads_max': 5, 'half_stride_heads': 1, 'one_second_seeds': [0, 1, 2], 'gate_head_g100': True, 'weighting': 'EQUAL. No head is chosen or weighted by its result.'}
+[2026-09-24T17:51:18]   PA4: phase sweep over 10 lock-correct walks
+[2026-09-24T17:51:38]   PA6: phase sweep over 7 lock-correct walks
+[2026-09-24T17:51:38]   s01_to_s03 head offset 0.750: ahead  59.6%  mean +0.048 m  bounds -1.000/-1.000 s
+[2026-09-24T17:51:38]   s01_to_s03 head offset 0.625: ahead  52.1%  mean -0.100 m  bounds -1.128/-1.128 s
+[2026-09-24T17:51:38]   s01_to_s03 head offset 0.500: ahead  41.8%  mean -0.252 m  bounds -1.251/-1.251 s
+[2026-09-24T17:51:38]   s01_to_s03 head offset 0.375: ahead  32.2%  mean -0.404 m  bounds -1.377/-1.377 s
+[2026-09-24T17:51:38]   s01_to_s03 head offset 0.250: ahead  25.1%  mean -0.562 m  bounds -1.500/-1.500 s
+[2026-09-24T17:51:38]   s01_to_s03 head offset 0.125: ahead  19.0%  mean -0.721 m  bounds -1.628/-1.628 s
+[2026-09-24T17:51:38]   s01_to_s03 head offset 0.000: ahead  12.5%  mean -0.883 m  bounds -1.751/-1.751 s
+[2026-09-24T17:51:39] f4_phase_s02_to_s01 START: the operator-assisted live demonstration. verdict passed=True; motion model 0.649 m per window
+[2026-09-24T17:51:42]   rendering from the SHIPPED POOL: {'heads': 5, 'heads_max': 5, 'half_stride_heads': 1, 'one_second_seeds': [0, 1, 2], 'gate_head_g100': True, 'weighting': 'EQUAL. No head is chosen or weighted by its result.'}
+[2026-09-24T17:52:04]   shipped Part 2 arm: {'entry_window_m': 1.0, 'start_weight': 0.5}, start terms for 120 passes
+[2026-09-24T17:52:04]   mid-walk switching: {'arm': 'C', 'theta': 2.0, 'max_switches': 1, 'final_m': 1.5, 'radius_m': 1.5, 'band': ['A_t2', 'B_t2', 'C_t2'], 'top_agreement': 647}
+[2026-09-24T17:52:04]   shipped display arm: DISP_END
+[2026-09-24T17:52:22]   shipped Part 2 arm: {'entry_window_m': 1.0, 'start_weight': 0.5}, start terms for 120 passes
+[2026-09-24T17:52:22]   mid-walk switching: {'arm': 'C', 'theta': 2.0, 'max_switches': 1, 'final_m': 1.5, 'radius_m': 1.5, 'band': ['A_t2', 'B_t2', 'C_t2'], 'top_agreement': 647}
+[2026-09-24T17:52:22]   shipped display arm: DISP_END
+[2026-09-24T17:52:24]   PA5: phase sweep over 2 lock-correct walks
+[2026-09-24T17:52:28]   PA5   20 walks, 15 committed correctly, tracking  36.3%, 20 switches, 0 rule violations, 0 frames without a dot, 3.93 MB
+[2026-09-24T17:52:41]   PA5: phase sweep over 4 lock-correct walks
+[2026-09-24T17:52:43]   PA1: phase sweep over 4 lock-correct walks
+[2026-09-24T17:53:00]   PA1: phase sweep over 3 lock-correct walks
+[2026-09-24T17:53:02]   PA2: phase sweep over 4 lock-correct walks
+[2026-09-24T17:53:19]   PA2: phase sweep over 4 lock-correct walks
+[2026-09-24T17:53:21]   PA3: phase sweep over 9 lock-correct walks
+[2026-09-24T17:53:38]   PA3: phase sweep over 10 lock-correct walks
+[2026-09-24T17:53:40]   PA4: phase sweep over 6 lock-correct walks
+[2026-09-24T17:53:57]   PA4: phase sweep over 4 lock-correct walks
+[2026-09-24T17:53:59]   PA6: phase sweep over 7 lock-correct walks
+[2026-09-24T17:53:59]   s0203_to_s01 head offset 0.750: ahead  37.4%  mean -0.345 m  bounds -1.000/-1.000 s
+[2026-09-24T17:53:59]   s0203_to_s01 head offset 0.625: ahead  30.8%  mean -0.494 m  bounds -1.127/-1.127 s
+[2026-09-24T17:53:59]   s0203_to_s01 head offset 0.500: ahead  23.6%  mean -0.645 m  bounds -1.250/-1.250 s
+[2026-09-24T17:53:59]   s0203_to_s01 head offset 0.375: ahead  14.4%  mean -0.796 m  bounds -1.376/-1.376 s
+[2026-09-24T17:53:59]   s0203_to_s01 head offset 0.250: ahead   7.4%  mean -0.947 m  bounds -1.500/-1.500 s
+[2026-09-24T17:53:59]   s0203_to_s01 head offset 0.125: ahead   1.6%  mean -1.099 m  bounds -1.627/-1.627 s
+[2026-09-24T17:53:59]   s0203_to_s01 head offset 0.000: ahead   0.0%  mean -1.254 m  bounds -1.750/-1.750 s
+[2026-09-24T17:54:13]   PA6: phase sweep over 6 lock-correct walks
+[2026-09-24T17:54:13]   s02_to_s01 head offset 0.750: ahead  39.9%  mean -0.299 m  bounds -1.000/-1.000 s
+[2026-09-24T17:54:13]   s02_to_s01 head offset 0.625: ahead  30.9%  mean -0.453 m  bounds -1.129/-1.129 s
+[2026-09-24T17:54:13]   s02_to_s01 head offset 0.500: ahead  23.2%  mean -0.611 m  bounds -1.252/-1.252 s
+[2026-09-24T17:54:13]   s02_to_s01 head offset 0.375: ahead  16.2%  mean -0.770 m  bounds -1.376/-1.376 s
+[2026-09-24T17:54:13]   s02_to_s01 head offset 0.250: ahead  11.1%  mean -0.933 m  bounds -1.500/-1.500 s
+[2026-09-24T17:54:13]   s02_to_s01 head offset 0.125: ahead   6.3%  mean -1.100 m  bounds -1.629/-1.629 s
+[2026-09-24T17:54:13]   s02_to_s01 head offset 0.000: ahead   2.7%  mean -1.271 m  bounds -1.752/-1.752 s
+[2026-09-24T17:54:20]   PA1   20 walks, 19 committed correctly, tracking  55.9%, 20 switches, 0 rule violations, 0 frames without a dot, 3.72 MB
+[2026-09-24T17:55:39]   PA2   20 walks, 17 committed correctly, tracking  32.3%, 20 switches, 0 rule violations, 0 frames without a dot, 3.81 MB
+[2026-09-24T17:57:02]   PA3   20 walks, 18 committed correctly, tracking  34.0%, 20 switches, 0 rule violations, 0 frames without a dot, 3.79 MB
+[2026-09-24T17:58:40]   PA4    20 walks, 17 committed correctly, tracking  47.1%, 20 switches, 0 rule violations, 0 frames without a dot, 4.18 MB
+[2026-09-24T17:59:55]   PA6   20 walks, 20 committed correctly, tracking  32.3%, 20 switches, 0 rule violations, 0 frames without a dot, 3.63 MB
+[2026-09-24T17:59:55]   folder now 7 files, six videos and ACCEPTANCE.md = True
+[2026-09-24T17:59:55]   the one rule: 0 violations over 4579 frames
+[2026-09-24T17:59:55]   dot present on every frame after the first legal one: 0 missing of 7756 expected; 0 of 21924 total frames have no dot, which is the listening periods and the gaps between walks
+[2026-09-24T17:59:55]   causal bound over every drawn frame: -1.375 s (must be <= 0)
+[2026-09-24T17:59:55]   jumps over 0.5 m: 146, of which 120 at the lock
+[2026-09-24T17:59:55]   on-screen tracking 39.63% within 0.5 m (before 3.35%), mean 1.07 m (before 2.04 m)
+[2026-09-24T17:59:55]   contract checks all pass: True
+[2026-09-24T17:59:55] f4_render DONE in 10.5 min
+[2026-09-24T18:01:14] f4_render START: the operator-assisted live demonstration. verdict passed=True; motion model 0.649 m per window
+[2026-09-24T18:01:16]   rendering from the SHIPPED POOL: {'heads': 5, 'heads_max': 5, 'half_stride_heads': 1, 'one_second_seeds': [0, 1, 2], 'gate_head_g100': True, 'weighting': 'EQUAL. No head is chosen or weighted by its result.'}
+[2026-09-24T18:01:54]   shipped Part 2 arm: {'entry_window_m': 1.0, 'start_weight': 0.5}, start terms for 120 passes
+[2026-09-24T18:01:54]   mid-walk switching: {'arm': 'C', 'theta': 2.0, 'max_switches': 1, 'final_m': 1.5, 'radius_m': 1.5, 'band': ['A_t2', 'B_t2', 'C_t2'], 'top_agreement': 647}
+[2026-09-24T18:01:54]   shipped display arm: DISP_END
+[2026-09-24T18:03:18]   PA5   20 walks, 15 committed correctly, tracking  36.3%, 20 switches, 0 rule violations, 0 frames without a dot, 3.82 MB
+[2026-09-24T18:04:47]   PA1   20 walks, 19 committed correctly, tracking  55.9%, 20 switches, 0 rule violations, 0 frames without a dot, 3.61 MB
+[2026-09-24T18:06:22]   PA2   20 walks, 17 committed correctly, tracking  32.3%, 20 switches, 0 rule violations, 0 frames without a dot, 3.69 MB
+[2026-09-24T18:07:56]   PA3   20 walks, 18 committed correctly, tracking  34.0%, 20 switches, 0 rule violations, 0 frames without a dot, 3.68 MB
+[2026-09-24T18:09:41]   PA4    20 walks, 17 committed correctly, tracking  47.1%, 20 switches, 0 rule violations, 0 frames without a dot, 4.06 MB
+[2026-09-24T18:11:08]   PA6   20 walks, 20 committed correctly, tracking  32.3%, 20 switches, 0 rule violations, 0 frames without a dot, 3.52 MB
+[2026-09-24T18:11:08]   folder now 7 files, six videos and ACCEPTANCE.md = True
+[2026-09-24T18:11:08]   the one rule: 0 violations over 4579 frames
+[2026-09-24T18:11:08]   dot present on every frame after the first legal one: 0 missing of 7756 expected; 0 of 21924 total frames have no dot, which is the listening periods and the gaps between walks
+[2026-09-24T18:11:08]   causal bound over every drawn frame: -1.375 s (must be <= 0)
+[2026-09-24T18:11:08]   jumps over 0.5 m: 146, of which 120 at the lock
+[2026-09-24T18:11:08]   on-screen tracking 39.63% within 0.5 m (before 3.35%), mean 1.07 m (before 2.04 m)
+[2026-09-24T18:11:08]   contract checks all pass: True
+[2026-09-24T18:11:08] f4_render DONE in 9.9 min
+[2026-09-28T08:31:54]     trained sB1_to_sB2 g25 e24 s0, 3 links, 1178 windows
+[2026-09-28T08:34:34]     trained sB1_to_sB2 pos2 e20 s0, 3 links, 1178 windows
+[2026-09-28T08:36:02]     trained sB1_to_sB2 g25 e24 s0, 3 links, 554 windows
+[2026-09-28T08:37:26]     trained sB1_to_sB2 g25 e24 s1, 3 links, 554 windows
+[2026-09-28T08:38:51]     trained sB1_to_sB2 g25 e24 s2, 3 links, 554 windows
+[2026-09-28T08:40:16]     trained sB1_to_sB2 g100 e24 s0, 3 links, 554 windows
+[2026-09-28T08:46:03]     trained sB2_to_sB1 g25 e24 s0, 3 links, 1166 windows
+[2026-09-28T08:48:25]     trained sB2_to_sB1 pos2 e20 s0, 3 links, 1166 windows
+[2026-09-28T08:49:52]     trained sB2_to_sB1 g25 e24 s0, 3 links, 552 windows
+[2026-09-28T08:51:19]     trained sB2_to_sB1 g25 e24 s1, 3 links, 552 windows
+[2026-09-28T08:52:44]     trained sB2_to_sB1 g25 e24 s2, 3 links, 552 windows
+[2026-09-28T08:54:10]     trained sB2_to_sB1 g100 e24 s0, 3 links, 552 windows
+[2026-09-28T09:01:49]     trained s01_to_s02 g25 e24 s0, 3 links, 1122 windows
+[2026-09-28T09:04:06]     trained s01_to_s02 pos2 e20 s0, 3 links, 1122 windows
+[2026-09-28T09:05:27]     trained s01_to_s02 g25 e24 s0, 3 links, 526 windows
+[2026-09-28T09:06:48]     trained s01_to_s02 g25 e24 s1, 3 links, 526 windows
+[2026-09-28T09:08:05]     trained s01_to_s02 g25 e24 s2, 3 links, 526 windows
+[2026-09-28T09:09:21]     trained s01_to_s02 g100 e24 s0, 3 links, 526 windows
+[2026-09-28T09:25:38]     trained s010203B1_to_sB2 g25 e24 s0, 3 links, 4572 windows
+[2026-09-28T09:34:21]     trained s010203B1_to_sB2 pos2 e20 s0, 3 links, 4572 windows
+[2026-09-28T09:39:22]     trained s010203B1_to_sB2 g25 e24 s0, 3 links, 2156 windows
+[2026-09-28T09:44:21]     trained s010203B1_to_sB2 g25 e24 s1, 3 links, 2156 windows
+[2026-09-28T09:49:18]     trained s010203B1_to_sB2 g25 e24 s2, 3 links, 2156 windows
+[2026-09-28T09:54:15]     trained s010203B1_to_sB2 g100 e24 s0, 3 links, 2156 windows
+[2026-09-28T10:08:33]     trained s010203B2_to_sB1 g25 e24 s0, 3 links, 4560 windows
+[2026-09-28T10:17:11]     trained s010203B2_to_sB1 pos2 e20 s0, 3 links, 4560 windows
+[2026-09-28T10:22:09]     trained s010203B2_to_sB1 g25 e24 s0, 3 links, 2154 windows
+[2026-09-28T10:27:09]     trained s010203B2_to_sB1 g25 e24 s1, 3 links, 2154 windows
+[2026-09-28T10:32:09]     trained s010203B2_to_sB1 g25 e24 s2, 3 links, 2154 windows
+[2026-09-28T10:37:10]     trained s010203B2_to_sB1 g100 e24 s0, 3 links, 2154 windows
+[2026-09-28T10:51:57]     trained s0203B1B2_to_s01 g25 e24 s0, 3 links, 4616 windows
+[2026-09-28T11:00:51]     trained s0203B1B2_to_s01 pos2 e20 s0, 3 links, 4616 windows
+[2026-09-28T11:05:56]     trained s0203B1B2_to_s01 g25 e24 s0, 3 links, 2182 windows
+[2026-09-28T11:10:55]     trained s0203B1B2_to_s01 g25 e24 s1, 3 links, 2182 windows
+[2026-09-28T11:15:56]     trained s0203B1B2_to_s01 g25 e24 s2, 3 links, 2182 windows
+[2026-09-28T11:20:59]     trained s0203B1B2_to_s01 g100 e24 s0, 3 links, 2182 windows
+[2026-09-28T11:37:32]     trained s0103B1B2_to_s02 g25 e24 s0, 3 links, 4610 windows
+[2026-09-28T11:46:30]     trained s0103B1B2_to_s02 pos2 e20 s0, 3 links, 4610 windows
+[2026-09-28T11:51:37]     trained s0103B1B2_to_s02 g25 e24 s0, 3 links, 2173 windows
+[2026-09-28T11:56:41]     trained s0103B1B2_to_s02 g25 e24 s1, 3 links, 2173 windows
+[2026-09-28T12:01:46]     trained s0103B1B2_to_s02 g25 e24 s2, 3 links, 2173 windows
+[2026-09-28T12:06:48]     trained s0103B1B2_to_s02 g100 e24 s0, 3 links, 2173 windows
+[2026-09-28T12:23:02]     trained s0102B1B2_to_s03 g25 e24 s0, 3 links, 4594 windows
+[2026-09-28T12:31:54]     trained s0102B1B2_to_s03 pos2 e20 s0, 3 links, 4594 windows
+[2026-09-28T12:37:01]     trained s0102B1B2_to_s03 g25 e24 s0, 3 links, 2167 windows
+[2026-09-28T12:42:06]     trained s0102B1B2_to_s03 g25 e24 s1, 3 links, 2167 windows
+[2026-09-28T12:47:14]     trained s0102B1B2_to_s03 g25 e24 s2, 3 links, 2167 windows
+[2026-09-28T12:52:22]     trained s0102B1B2_to_s03 g100 e24 s0, 3 links, 2167 windows
+[2026-09-28T13:08:22]     trained s010203B1_to_sB2 g25 e24 s0, 3 links, 4572 windows
+[2026-09-28T13:17:11]     trained s010203B1_to_sB2 pos2 e20 s0, 3 links, 4572 windows
+[2026-09-28T13:22:15]     trained s010203B1_to_sB2 g25 e24 s0, 3 links, 2156 windows
+[2026-09-28T13:27:20]     trained s010203B1_to_sB2 g25 e24 s1, 3 links, 2156 windows
+[2026-09-28T13:32:25]     trained s010203B1_to_sB2 g25 e24 s2, 3 links, 2156 windows
+[2026-09-28T13:37:30]     trained s010203B1_to_sB2 g100 e24 s0, 3 links, 2156 windows
+[2026-09-28T13:52:03]     trained s010203B2_to_sB1 g25 e24 s0, 3 links, 4560 windows
+[2026-09-28T14:00:50]     trained s010203B2_to_sB1 pos2 e20 s0, 3 links, 4560 windows
+[2026-09-28T14:05:54]     trained s010203B2_to_sB1 g25 e24 s0, 3 links, 2154 windows
+[2026-09-28T14:11:00]     trained s010203B2_to_sB1 g25 e24 s1, 3 links, 2154 windows
+[2026-09-28T14:16:06]     trained s010203B2_to_sB1 g25 e24 s2, 3 links, 2154 windows
+[2026-09-28T14:21:13]     trained s010203B2_to_sB1 g100 e24 s0, 3 links, 2154 windows
+[2026-09-28T14:36:10]     trained s0203B1B2_to_s01 g25 e24 s0, 3 links, 4616 windows
+[2026-09-28T14:45:02]     trained s0203B1B2_to_s01 pos2 e20 s0, 3 links, 4616 windows
+[2026-09-28T14:50:09]     trained s0203B1B2_to_s01 g25 e24 s0, 3 links, 2182 windows
+[2026-09-28T14:55:14]     trained s0203B1B2_to_s01 g25 e24 s1, 3 links, 2182 windows
+[2026-09-28T15:00:11]     trained s0203B1B2_to_s01 g25 e24 s2, 3 links, 2182 windows
+[2026-09-28T15:05:06]     trained s0203B1B2_to_s01 g100 e24 s0, 3 links, 2182 windows
+[2026-09-28T15:21:20]     trained s0103B1B2_to_s02 g25 e24 s0, 3 links, 4610 windows
+[2026-09-28T15:29:53]     trained s0103B1B2_to_s02 pos2 e20 s0, 3 links, 4610 windows
+[2026-09-28T15:34:48]     trained s0103B1B2_to_s02 g25 e24 s0, 3 links, 2173 windows
+[2026-09-28T15:39:42]     trained s0103B1B2_to_s02 g25 e24 s1, 3 links, 2173 windows
+[2026-09-28T15:44:36]     trained s0103B1B2_to_s02 g25 e24 s2, 3 links, 2173 windows
+[2026-09-28T15:49:30]     trained s0103B1B2_to_s02 g100 e24 s0, 3 links, 2173 windows
+[2026-09-28T16:05:18]     trained s0102B1B2_to_s03 g25 e24 s0, 3 links, 4594 windows
+[2026-09-28T16:13:49]     trained s0102B1B2_to_s03 pos2 e20 s0, 3 links, 4594 windows
+[2026-09-28T16:18:44]     trained s0102B1B2_to_s03 g25 e24 s0, 3 links, 2167 windows
+[2026-09-28T16:23:37]     trained s0102B1B2_to_s03 g25 e24 s1, 3 links, 2167 windows
+[2026-09-28T16:28:29]     trained s0102B1B2_to_s03 g25 e24 s2, 3 links, 2167 windows
+[2026-09-28T16:33:22]     trained s0102B1B2_to_s03 g100 e24 s0, 3 links, 2167 windows
+[2026-09-28T16:43:36]     trained s0203_to_s01 g25 e24 s0, 3 links, 2272 windows
+[2026-09-28T16:47:49]     trained s0203_to_s01 pos2 e20 s0, 3 links, 2272 windows
+[2026-09-28T16:50:16]     trained s0203_to_s01 g25 e24 s0, 3 links, 1076 windows
+[2026-09-28T16:52:42]     trained s0203_to_s01 g25 e24 s1, 3 links, 1076 windows
+[2026-09-28T16:55:08]     trained s0203_to_s01 g25 e24 s2, 3 links, 1076 windows
+[2026-09-28T16:57:35]     trained s0203_to_s01 g100 e24 s0, 3 links, 1076 windows
+[2026-09-28T17:07:49]     trained s0103_to_s02 g25 e24 s0, 3 links, 2266 windows
+[2026-09-28T17:12:00]     trained s0103_to_s02 pos2 e20 s0, 3 links, 2266 windows
+[2026-09-28T17:14:26]     trained s0103_to_s02 g25 e24 s0, 3 links, 1067 windows
+[2026-09-28T17:16:51]     trained s0103_to_s02 g25 e24 s1, 3 links, 1067 windows
+[2026-09-28T17:19:16]     trained s0103_to_s02 g25 e24 s2, 3 links, 1067 windows
+[2026-09-28T17:21:41]     trained s0103_to_s02 g100 e24 s0, 3 links, 1067 windows
+[2026-09-28T17:31:29]     trained s0102_to_s03 g25 e24 s0, 3 links, 2250 windows
+[2026-09-28T17:35:42]     trained s0102_to_s03 pos2 e20 s0, 3 links, 2250 windows
+[2026-09-28T17:38:08]     trained s0102_to_s03 g25 e24 s0, 3 links, 1061 windows
+[2026-09-28T17:40:32]     trained s0102_to_s03 g25 e24 s1, 3 links, 1061 windows
+[2026-09-28T17:42:57]     trained s0102_to_s03 g25 e24 s2, 3 links, 1061 windows
+[2026-09-28T17:45:22]     trained s0102_to_s03 g100 e24 s0, 3 links, 1061 windows
+[2026-09-28T17:52:20]     trained s01_to_s03 g25 e24 s0, 3 links, 1122 windows
+[2026-09-28T17:54:29]     trained s01_to_s03 pos2 e20 s0, 3 links, 1122 windows
+[2026-09-28T17:55:42]     trained s01_to_s03 g25 e24 s0, 3 links, 526 windows
+[2026-09-28T17:56:56]     trained s01_to_s03 g25 e24 s1, 3 links, 526 windows
+[2026-09-28T17:58:09]     trained s01_to_s03 g25 e24 s2, 3 links, 526 windows
+[2026-09-28T17:59:22]     trained s01_to_s03 g100 e24 s0, 3 links, 526 windows
+[2026-09-28T18:05:54]     trained s02_to_s01 g25 e24 s0, 3 links, 1128 windows
+[2026-09-28T18:08:04]     trained s02_to_s01 pos2 e20 s0, 3 links, 1128 windows
+[2026-09-28T18:09:19]     trained s02_to_s01 g25 e24 s0, 3 links, 535 windows
+[2026-09-28T18:10:33]     trained s02_to_s01 g25 e24 s1, 3 links, 535 windows
+[2026-09-28T18:11:47]     trained s02_to_s01 g25 e24 s2, 3 links, 535 windows
+[2026-09-28T18:13:02]     trained s02_to_s01 g100 e24 s0, 3 links, 535 windows
+[2026-09-28T18:20:20]     trained s02_to_s03 g25 e24 s0, 3 links, 1128 windows
+[2026-09-28T18:22:29]     trained s02_to_s03 pos2 e20 s0, 3 links, 1128 windows
+[2026-09-28T18:23:43]     trained s02_to_s03 g25 e24 s0, 3 links, 535 windows
+[2026-09-28T18:24:58]     trained s02_to_s03 g25 e24 s1, 3 links, 535 windows
+[2026-09-28T18:26:11]     trained s02_to_s03 g25 e24 s2, 3 links, 535 windows
+[2026-09-28T18:27:26]     trained s02_to_s03 g100 e24 s0, 3 links, 535 windows
+[2026-09-28T18:33:52]     trained s03_to_s01 g25 e24 s0, 3 links, 1144 windows
+[2026-09-28T18:36:02]     trained s03_to_s01 pos2 e20 s0, 3 links, 1144 windows
+[2026-09-28T18:37:18]     trained s03_to_s01 g25 e24 s0, 3 links, 541 windows
+[2026-09-28T18:38:33]     trained s03_to_s01 g25 e24 s1, 3 links, 541 windows
+[2026-09-28T18:39:48]     trained s03_to_s01 g25 e24 s2, 3 links, 541 windows
+[2026-09-28T18:41:03]     trained s03_to_s01 g100 e24 s0, 3 links, 541 windows
+[2026-09-28T18:48:23]     trained s03_to_s02 g25 e24 s0, 3 links, 1144 windows
+[2026-09-28T18:50:34]     trained s03_to_s02 pos2 e20 s0, 3 links, 1144 windows
+[2026-09-28T18:51:49]     trained s03_to_s02 g25 e24 s0, 3 links, 541 windows
+[2026-09-28T18:53:05]     trained s03_to_s02 g25 e24 s1, 3 links, 541 windows
+[2026-09-28T18:54:20]     trained s03_to_s02 g25 e24 s2, 3 links, 541 windows
+[2026-09-28T18:55:35]     trained s03_to_s02 g100 e24 s0, 3 links, 541 windows
+[2026-09-28T20:20:46]     trained s0102B1_to_s03 g25 e24 s0, 3 links, 3428 windows
+[2026-09-28T20:27:37]     trained s0102B1_to_s03 pos2 e20 s0, 3 links, 3428 windows
+[2026-09-28T20:31:32]     trained s0102B1_to_s03 g25 e24 s0, 3 links, 1615 windows
+[2026-09-28T20:35:24]     trained s0102B1_to_s03 g25 e24 s1, 3 links, 1615 windows
+[2026-09-28T20:39:17]     trained s0102B1_to_s03 g25 e24 s2, 3 links, 1615 windows
+[2026-09-28T20:43:13]     trained s0102B1_to_s03 g100 e24 s0, 3 links, 1615 windows
+[2026-09-28T22:37:48]     trained s0102_to_sB1 g25 e24 s0, 3 links, 2250 windows
+[2026-09-28T22:42:59]     trained s0102_to_sB1 pos2 e20 s0, 3 links, 2250 windows
+[2026-09-28T22:46:01]     trained s0102_to_sB1 g25 e24 s0, 3 links, 1061 windows
+[2026-09-28T22:48:56]     trained s0102_to_sB1 g25 e24 s1, 3 links, 1061 windows
+[2026-09-28T22:51:55]     trained s0102_to_sB1 g25 e24 s2, 3 links, 1061 windows
+[2026-09-28T22:54:53]     trained s0102_to_sB1 g100 e24 s0, 3 links, 1061 windows
+[2026-09-28T23:08:04]     trained s01B1_to_s02 g25 e24 s0, 3 links, 2300 windows
+[2026-09-28T23:13:09]     trained s01B1_to_s02 pos2 e20 s0, 3 links, 2300 windows
+[2026-09-28T23:16:10]     trained s01B1_to_s02 g25 e24 s0, 3 links, 1080 windows
+[2026-09-28T23:19:56]     trained s01B1_to_s02 g25 e24 s1, 3 links, 1080 windows
+[2026-09-28T23:23:01]     trained s01B1_to_s02 g25 e24 s2, 3 links, 1080 windows
+[2026-09-28T23:26:00]     trained s01B1_to_s02 g100 e24 s0, 3 links, 1080 windows
+[2026-09-28T23:39:41]     trained s01B1_to_s02 g25 e24 s0, 3 links, 2300 windows
+[2026-09-28T23:44:45]     trained s01B1_to_s02 pos2 e20 s0, 3 links, 2300 windows
+[2026-09-28T23:47:43]     trained s01B1_to_s02 g25 e24 s0, 3 links, 1080 windows
+[2026-09-28T23:50:41]     trained s01B1_to_s02 g25 e24 s1, 3 links, 1080 windows
+[2026-09-28T23:53:39]     trained s01B1_to_s02 g25 e24 s2, 3 links, 1080 windows
+[2026-09-28T23:56:38]     trained s01B1_to_s02 g100 e24 s0, 3 links, 1080 windows
+[2026-09-29T00:12:17]     trained s02B1_to_s01 g25 e24 s0, 3 links, 2306 windows
+[2026-09-29T00:17:24]     trained s02B1_to_s01 pos2 e20 s0, 3 links, 2306 windows
+[2026-09-29T00:20:25]     trained s02B1_to_s01 g25 e24 s0, 3 links, 1089 windows
+[2026-09-29T00:23:27]     trained s02B1_to_s01 g25 e24 s1, 3 links, 1089 windows
+[2026-09-29T00:26:29]     trained s02B1_to_s01 g25 e24 s2, 3 links, 1089 windows
+[2026-09-29T00:29:31]     trained s02B1_to_s01 g100 e24 s0, 3 links, 1089 windows
+[2026-09-29T00:45:20]     trained s02B1_to_s01 g25 e24 s0, 3 links, 2306 windows
+[2026-09-29T00:50:28]     trained s02B1_to_s01 pos2 e20 s0, 3 links, 2306 windows
+[2026-09-29T00:53:30]     trained s02B1_to_s01 g25 e24 s0, 3 links, 1089 windows
+[2026-09-29T00:56:32]     trained s02B1_to_s01 g25 e24 s1, 3 links, 1089 windows
+[2026-09-29T00:59:33]     trained s02B1_to_s01 g25 e24 s2, 3 links, 1089 windows
+[2026-09-29T01:02:34]     trained s02B1_to_s01 g100 e24 s0, 3 links, 1089 windows

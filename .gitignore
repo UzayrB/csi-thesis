@@ -1,0 +1,67 @@
+# Captured data
+data/
+*.bin
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# macOS
+.DS_Store
+
+# trained checkpoints are reproducible from the manifests
+runs/**/model.pt
+
+# post-mortem checkpoints are reproducible from their manifests
+runs/postmortem/**/*.pt
+
+# Rebuilt artefacts for the constrained batch. Large and regenerable from the raw
+# captures and this repository alone; runs/artefacts/MANIFEST.md records every hash.
+runs/artefacts/features/
+runs/artefacts/rssi_full/
+runs/artefacts/models/
+runs/artefacts/posteriors/
+
+# the 0.5 s arm's artefacts, same reasoning as the 1 s tree above: large, derived, and
+# regenerable from runs/constrained/windows_half/ by pipeline.constrained.sb0_train_half
+runs/artefacts_half/features/
+runs/artefacts_half/rssi_full/
+runs/artefacts_half/models/
+runs/artefacts_half/posteriors/
+runs/artefacts_half/gate_energy/
+reports/heartbeat.pid
+reports/chain.pid
+
+# the 0.5 s re-window of amendment C1: about 5.4 GB of derived windows, never committed
+runs/constrained/windows_half/
+reports/STOP_HEARTBEAT
+reports/BATCH_IN_PROGRESS
+reports/SESSION_ACTIVE
+
+# Run output that earlier batches wrote into data/ and the 2026-09-18 cleanup moved out.
+# It was gitignored under data/ and it stays gitignored here: about 4.0 GB of derived .npz
+# and .npy, regenerable, and never committed. The move was to get it out of data/, not to
+# start versioning it.
+testing/from_data/
+
+# Derived caches, regenerable in minutes, never committed (cleanup 2026-09-24, reports/CLEANUP_BRIEF_2026-09-23.md).
+# No trailing slash on features and rssi_full, so the symlinks that stand for them are covered too.
+runs/**/features
+runs/**/rssi_full
+runs/**/posteriors/
+runs/constrained/windows*/
+runs/constrained/dc2_*/windows/
+runs/constrained/demo_archive/
+runs/identify/idmax/bank/
+
+# the propagation investigation's per-block table (1 Oct 2026): 7.7 MB, regenerable with
+# runs/dc2_results/propagation/propagation.py collect from data/ alone
+runs/dc2_results/propagation/blocks.csv
+
+# Engine v5's RF/ET pickles (37 to 338 MB each): kept on Google Drive, not in git (Uzayr, 11 Oct 2026); runs/identify/v5/STORAGE.md
+runs/identify/engine/models/*_v5/feat_rf.pkl
+runs/identify/engine/models/*_v5/feat_rf_prior.pkl
+runs/identify/engine/models/*_v5/feat_rf_pace_prior.pkl
+runs/identify/engine/models/*_v5/feat_et_pace_prior.pkl

@@ -1,0 +1,40 @@
+PASSED
+id29, DC2 identification, confirmatory, scored once against addendum B.
+
+
+---
+
+# DC2 identification, confirmatory (2026-09-28)
+
+Scored once by `pipeline/identify/id29_dc2_score.py` against the pre-registration and addendum B (SHA-256 e5d7acfa31f9006e..., 47c737cc14e66eb9...). Heads fixed, labels sealed. SECONDARY is post hoc; S0 is a control.
+
+| analysis | accuracy % | 95% interval (participants) | chance % | p | n |
+|---|---|---|---|---|---|
+| P1 cross-day, PRIMARY (THE RESULT) | 26.67 | [13.33, 36.67] | 16.67 | 0.1518 | 30 |
+| P1 cross-day, SECONDARY (post hoc) | 13.33 | [3.33, 26.67] | 16.67 | 0.8531 | 30 |
+| P1 cross-day, S0 (control) | 40.0 | [10.0, 73.33] | 16.67 | 0.044 | 30 |
+| P2 link TX-RX2 alone, fixed 2 s crop (mean F 0.9814) | 23.33 | [6.67, 40.0] | 16.67 | 0.2707 | 30 |
+| P2 link TX-RX3 alone, fixed 2 s crop (mean F 0.5) | 23.33 | [6.67, 43.33] | 16.67 | 0.2557 | 30 |
+| P2 link TX-RX1 alone, fixed 2 s crop (mean F 0.0) | 13.33 | [0.0, 33.33] | 16.67 | 0.7512 | 30 |
+| P2 link TX-RX2 alone, full length, carries pace (mean F 0.9814) | 10.0 | [3.33, 16.67] | 16.67 | 0.8971 | 30 |
+| P2 link TX-RX3 alone, full length, carries pace (mean F 0.5) | 13.33 | [0.0, 33.33] | 16.67 | 0.7572 | 30 |
+| P2 link TX-RX1 alone, full length, carries pace (mean F 0.0) | 10.0 | [0.0, 23.33] | 16.67 | 0.8412 | 30 |
+| P3 PRIMARY, day 2 slow | 16.67 | [3.33, 33.33] | 16.67 | 0.6124 | 30 |
+| P3 PRIMARY, day 2 fast | 26.67 | [13.33, 43.33] | 16.67 | 0.1489 | 30 |
+| P3 SECONDARY, day 2 slow | 26.67 | [6.67, 50.08] | 16.67 | 0.0689 | 30 |
+| P3 SECONDARY, day 2 fast | 20.0 | [0.0, 46.67] | 16.67 | 0.4326 | 30 |
+| P3 S0, day 2 slow | 16.67 | [0.0, 50.0] | 16.67 | 0.8412 | 30 |
+| P3 S0, day 2 fast | 16.67 | [0.0, 50.0] | 16.67 | 0.6893 | 30 |
+| P4 placement control, identification spot | 33.33 | [0.0, 66.67] | 16.67 | 0.1249 | 60 |
+| P4 placement control, home (information for tracking) | 16.67 | [0.0, 50.0] | 16.67 | 1.0 | 60 |
+| P5 recording signature, cross-day | 16.67 | [0.0, 50.0] | 16.67 | 1.0 | 30 |
+| P5 session-ID (day) control | 84.11 | [80.11, 87.89] | 50.0 | 0.001 | 900 |
+| P6 cross-room, TX-RX3 only | 10.0 | [3.33, 16.67] | 16.67 | 0.953 | 30 |
+| WITHIN-DAY, ONE SLOT, CONFOUNDED (not a result) | 63.33 | [53.33, 73.33] | 16.67 | 0.002 | 30 |
+
+**P2 geometry ordering**, fixed-length rows (TX-RX2 > TX-RX3 > TX-RX1, TX-RX1 near chance): NOT HELD. Physics: TX-RX1 F 0.0: observed 16.41 Hz against predicted 0.0 Hz (Spearman None); TX-RX2 F 0.9814: observed 18.75 Hz against predicted 19.73 Hz (Spearman 0.744); TX-RX3 F 0.5: observed 16.41 Hz against predicted 10.05 Hz (Spearman 0.276).
+
+**P3 pace.** S0 manipulation check: {'slow': False, 'fast': False}. Verdicts: PRIMARY slow: NOT DECIDABLE: S0's drop interval does not lie above zero; PRIMARY fast: NOT DECIDABLE: S0's drop interval does not lie above zero; SECONDARY slow: NOT DECIDABLE: S0's drop interval does not lie above zero; SECONDARY fast: NOT DECIDABLE: S0's drop interval does not lie above zero.
+
+**P4.** Identification spot: placement NOT distinguishable between people; RX2 static amplitude over the placements {'n_placements': 12, 'mean': 29.126, 'sd': 3.725, 'cv': 0.1279, 'min': 19.674, 'max': 33.221}.
+

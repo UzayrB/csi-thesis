@@ -1,0 +1,6 @@
+{
+ "script": "pipeline/identify/id27_report.py",
+ "figure": "F1_cohort_size",
+ "band": "min to max over all subsets of that size",
+ "source": "runs/identify/idmax/id26_final/results.json"
+}

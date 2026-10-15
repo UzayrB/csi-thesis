@@ -1,0 +1,36 @@
+PASSED
+id23, the identification path (item 6). 2026-09-23 12:44 SAST; DC2 choice 13:00.
+
+Results: runs/identify/idmax/id23_path/results.json and dc2_path_choice.json. Cross-day is LOSO,
+nested inside each fold (screen: logistic regression, since edge lines hold one pass per person
+per session); within-day enrols on each person's earlier pass on the path in a session and tests on
+the later one, with the head FIXED in advance (1-NN), labelled WITHIN-DAY every time.
+
+(a) EACH DIRECTED LINE ALONE. Every one is at chance and every interval contains it.
+  line     cross-day LOSO %   interval        n    within-day %   n
+  A_fwd    13.89              [2.78, 27.78]   36   27.78          18
+  A_rev    19.44              [5.56, 33.33]   36   33.33          18
+  B_fwd    13.89              [2.78, 27.78]   36   22.22          18
+  B_rev    13.89              [5.56, 25.00]   36   27.78          18
+  C_fwd    16.67              [5.56, 27.78]   36   16.67          18
+  C_rev    16.67              [5.56, 30.56]   36   33.33          18
+  D_fwd    11.11              [2.78, 22.22]   36   16.67          18
+  D_rev    19.44              [5.56, 36.11]   36   22.22          18
+  E_col1   27.78              [5.56, 50.00]   18   no cell (one pass per person per day)
+  E_col5   16.67              [0.00, 33.33]   18   no cell
+  E_row1   16.67              [0.00, 33.33]   18   no cell
+  E_row5   22.22              [5.56, 44.44]   18   no cell
+  With 36 or 18 test passes, an interval is 20 to 45 points wide. These cells cannot resolve
+  anything short of a large effect, and none shows one.
+(b) PHYSICAL LINES, BOTH DIRECTIONS POOLED (n = 72 each): direction-invariant features A 16.67,
+  B 16.67, C 19.44, D 22.22; direction as a flag A 16.67, B 12.50, C 22.22, D 13.89. All at chance.
+(c) THE PATH CHOSEN BY THE NESTED INNER LOOP. The three LOSO folds chose C_rev, B_fwd and E_col1,
+  a different line each time, and the chosen lines scored 13.33 percent held out [3.23, 25.81],
+  n = 30, p 0.72. The selection carries no information.
+(d) THE BEST-GEOMETRY PATH, E_row1: 16.67 cross-day [0.00, 33.33], n = 18. No within-day cell.
+
+DC2 PATH. The brief's rule takes item 6's nested choice when it exists before the deadline. Run on
+all three sessions, the procedure chooses E_col1 (25.0 mean inner accuracy over six session pairs;
+E_row1 16.7). The DC2 sheet was revised to E_col1 at 13:00 with a dated note setting out why that
+choice is not validated by its own held-out test, and naming E_row1 as the geometric alternative.
+The override is Uzayr's.

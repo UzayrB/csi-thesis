@@ -1,0 +1,26 @@
+{
+ "script": "pipeline/identify/id27_report.py",
+ "figure": "F4_gait_cycles_path",
+ "pass_keys": [
+  "01|P1|8",
+  "02|P1|15",
+  "03|P1|4",
+  "01|P2|11",
+  "02|P2|4",
+  "03|P2|10",
+  "01|P3|19",
+  "02|P3|15",
+  "03|P3|2",
+  "01|P4|13",
+  "02|P4|18",
+  "03|P4|7",
+  "01|P5|13",
+  "02|P5|6",
+  "03|P5|20",
+  "01|P6|19",
+  "02|P6|5",
+  "03|P6|13"
+ ],
+ "path": "E_col1",
+ "note": "one pass per person per session on the path"
+}

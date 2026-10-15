@@ -1,0 +1,12 @@
+{
+ "script": "pipeline/identify/id27_report.py",
+ "figure": "F5_doppler_spectrograms",
+ "pass_keys": [
+  "01|P1|8",
+  "01|P2|11",
+  "01|P3|19",
+  "01|P4|13",
+  "01|P5|13",
+  "01|P6|19"
+ ]
+}

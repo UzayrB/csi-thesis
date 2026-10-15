@@ -1,0 +1,27 @@
+# Identification check-ins while tracking runs (brief 2026-09-28, section 0)
+
+One line per check: time, tracking queue statuses (items 0 to 5), Python processes working in the repo, verdict.
+
+- 2026-09-28 08:49 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,running,queued behind 3,queued | python: 32849 32852 34427 34429 34528 | WAIT
+- 2026-09-28 09:22 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 36669 | WAIT
+- 2026-09-28 09:52 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 38270 | WAIT
+- 2026-09-28 10:22 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 39772 | WAIT
+- 2026-09-28 10:52 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 40674 | WAIT
+- 2026-09-28 11:22 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 42496 | WAIT
+- 2026-09-28 11:52 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 43825 | WAIT
+- 2026-09-28 12:22 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 44802 | WAIT
+- 2026-09-28 12:52 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 46327 | WAIT
+- 2026-09-28 13:22 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 47704 | WAIT
+- 2026-09-28 13:52 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 48799 | WAIT
+- 2026-09-28 14:22 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 50637 | WAIT
+- 2026-09-28 14:52 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 51891 | WAIT
+- 2026-09-28 15:22 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 52885 | WAIT
+- 2026-09-28 15:52 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 54715 | WAIT
+- 2026-09-28 16:22 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 55926 | WAIT
+- 2026-09-28 16:52 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 57393 | WAIT
+- 2026-09-28 17:22 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 58895 | WAIT
+- 2026-09-28 17:52 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 60281 | WAIT
+- 2026-09-28 18:22 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 61778 | WAIT
+- 2026-09-28 18:52 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),running,queued | python: 36665 36668 63582 | WAIT
+- 2026-09-28 19:02 | queue DONE b531975,DONE,DONE, VERIFIED 08:24,DONE 08:57 (3a 18.33, 3b 19.17),DONE 18:59,DONE 19:01, reports/DC2_RESULTS_2026-09-28.md | python: none | IDLE-CANDIDATE
+- 2026-09-28 19:11 | ten samples over ten minutes: queue all DONE or BLOCKED, no Python in the repo | TRACKING FINISHED

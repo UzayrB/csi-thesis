@@ -1,0 +1,5 @@
+{
+ "script": "pipeline/identify/id27_report.py",
+ "figure": "F2_positive_controls",
+ "source": "runs/identify/idmax/id20_controls/results.json"
+}

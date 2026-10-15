@@ -1,0 +1,26 @@
+# Walking gate thresholds. Proposed by tools/calibrate_gate.py, ACCEPTED at Checkpoint 4
+# (11 September 2026) exactly as proposed. Calibrated on session 01 only, from this data,
+# never copied. Encoded as constants in pipeline/branches/gate.py; this file is the record.
+status: accepted
+placed_on: session 01
+transfer_check:
+  session_02_standing_read_as_walking_pct: 15.3
+  session_02_walking_read_as_standing_pct: 0.1
+  note: transferred untouched; a result for the write-up, not a diagnostic
+statistic: 0.3-2 Hz band power of the cleaned 2 s window, mean over subcarriers and links
+band_hz: [0.3, 2.0]
+window_s: 2.0
+motion:
+  theta: 0.431285   # global: standing below, walking above
+presence:
+  rule: k times the 75th percentile of the session's own baseline window energies
+  k: 1.0381
+  baseline_quantile: 0.75
+  never_a_global_constant: true
+  required_argument_no_default: true
+  max_baseline_age_min: 60
+  balanced_accuracy_pct: {session_01: 77.1, session_02: 69.2}
+  oracle_ceiling_pct: {session_01: 77.0, session_02: 69.8}
+  accepted_as: deployable and weak; not tuned further
+figure: reports/audit/gate_distributions.png
+calibration_file_lists: [splits/dev.txt]

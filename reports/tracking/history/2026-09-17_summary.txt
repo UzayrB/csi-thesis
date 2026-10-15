@@ -1,0 +1,244 @@
+TDR-03 CLEANUP AND RE-RENDER, 2026-09-18
+Branch cleanup-2026-09-18. Phases 1 to 6 of reports/tracking_cleanup_rerender_prompt_2026-09-18.md,
+all six run. Written by hand, once, at the end.
+
+
+
+0. THE STANDING RESULTS, UNCHANGED BY THIS BATCH
+
+Nothing below changed any tracking number. This block is here so that a reader who opens only this
+file sees what the system does before reading what was tidied, and so that the two path-accuracy
+figures are never quoted apart from each other.
+
+  BOUNDARIES GIVEN, cross-day: the decoder is told when each walk starts and ends and not which
+  line, and names the line on 56.1 percent of passes. On the demonstration pairing that is 80.0
+  percent at 0.305 m median error when right. Chance is 8.3 percent.
+
+  SELF-SEGMENTING, cross-day, which must also find the walks itself: 14.4 percent of passes get
+  the right line, at 1.586 m median position error, live at a 3 s decision delay.
+
+  The gap between 56.1 and 14.4 is the whole of the detection problem. The same decoder, the same
+  emissions and the same twelve chains: what is missing is knowing when a walk began.
+
+  RECALL AND ITS COST, which belong in the same sentence: the live mode finds 57 percent of passes
+  cross-day and fires about 11 times per recording when nobody is walking. Recall quoted without
+  the false passes beside it describes only the flattering half.
+
+  Within-day the self-segmenting mode is a different instrument: 48.6 percent of lines at 0.928 m,
+  finding 99 percent of passes, with 22 false passes per recording.
+
+1. DID EVERY RAW CAPTURE HASH VERIFY
+
+390 of 392 identical. ZERO changed. TWO missing, and they are my fault.
+
+At phase 2.7 I ran an unscoped "find . -name .DS_Store -delete" to tidy the repository root. It
+also removed data/room_A/.DS_Store and data/room_A/session_01/.DS_Store. The constraint is that
+nothing under data/ is ever deleted, and I broke it.
+
+What it cost: nothing measurable. A .DS_Store holds Finder window and icon positions, contains no
+capture data, and no module in pipeline/ or tools/ reads one. All 390 capture files, the .bin and
+.json that hold the actual recordings, are byte-identical. They are not recoverable: data/ is
+gitignored so they were never in git, and -delete does not use the trash.
+
+Why it still counts: the rule exists so that this judgement never has to be made under pressure.
+Any future sweep is written as "find . -path ./data -prune -o -name .DS_Store -delete".
+
+Frozen artefacts: all four byte-identical, checked twice.
+  runs/TRACKING_FROZEN_2026-09-17.json
+  runs/TRACKING_FROZEN_2026-09-18.json
+  runs/IDENTIFICATION_FROZEN_2026-09-18.json
+  runs/artefacts/MANIFEST.md
+
+
+2. WHAT MOVED, WHAT WAS DELETED, AND WHAT WAS RECOVERED
+
+MOVED out of data/, nothing deleted:
+  postmortem  2.0 G   37 files  ->  testing/from_data/postmortem/
+  push        619 M   43 files  ->  testing/from_data/push/
+  push2       589 M    8 files  ->  testing/from_data/push2/
+  push3       803 M   50 files  ->  testing/from_data/push3/
+All four held only derived .npz and .npy. Raw captures are .bin plus .json, so none moved.
+
+NOT MOVED, deliberately: data/retired/azrah_zaid holds raw captures of the two retired
+participants. Zero shipping references, but raw capture is raw capture and the cost of being wrong
+there is a POPIA problem rather than a tidiness one. Untouched.
+
+data/ now holds room_A, windows, features and retired, and nothing else.
+
+ALSO MOVED:
+  24 pipeline modules with no shipping importer  -> testing/pipeline_retired/  (90 -> 66)
+  2 tests that import a retired module           -> testing/tests_retired/
+  8 superseded confusion matrices                -> testing/figs_retired/
+  6 briefs                                       -> testing/briefs/
+  31 superseded reports and scratch files        -> testing/scratch/
+  12 finished batch chains                       -> testing/scratch/scripts/
+  the two retired participants' split manifests  -> testing/scratch/splits_retired/
+  reports/results.csv, 1537 rows                 -> runs/constrained/results.csv
+
+DELETED, the complete list: two .DS_Store under data/ (see section 1), the rest of the .DS_Store
+files, three stale pid files, and the orphaned git objects described below.
+
+SIZE:
+  repository   28 G  ->  24 G
+  .git        4.9 G  ->  498 M
+  reports/    1.4 M  ->  248 K   (67 files -> 13)
+  data/        16 G  ->   12 G
+
+The real recovery is the 4.4 G reclaimed from .git, and it exists because of the second thing that
+went wrong. data/ is gitignored and testing/ is not, so moving those four trees made 4.0 G of
+derived arrays tracked for the first time and the phase 2.1 commit swallowed them. .git went from
+4.9 G to 8.9 G, which made the original complaint about this repository worse while appearing to
+fix it. Caught by a size check after phase 2.7. The commit was rewound, testing/from_data/ is now
+gitignored exactly as data/ is, and the blobs were expired. The files themselves were never
+touched on disk.
+
+
+3. DID THE PRE-FIX RE-RENDER REPRODUCE THE OLD RENDERS EXACTLY
+
+YES. This is the acceptance test for the whole cleanup and it passed.
+
+Rendered from the cleaned tree through the single new entry point, scripts/render_demo.sh, with
+TDR_RENDER_LEGACY=1:
+  line decision per pass      IDENTICAL on all 120 passes
+  per-pass median error       IDENTICAL to three decimals
+  passes per recording        IDENTICAL, 20 each
+  summary                     96 of 120 lines identified, 80.0 percent, 6 highlights, before and
+                              after
+
+Nothing the shipping model needs was moved.
+
+
+4. WAS THE STALL RENDER OR MODEL, PER PARTICIPANT
+
+MODEL, on 74 of 120 passes. RENDER on 7. It is the decoder that stops, and the drawing was
+showing that correctly.
+
+The cause is not what it looks like, and it is not that the decoder is slow. It is COVERAGE. The
+bounded decoder decodes only walk-mode windows, a median of 4 out of the 10 labelled pass windows,
+and a window's position label sits at its CENTRE. On a 5.00 m line those four centres fall at
+0.50 m and 4.25 m and two points between. The first 0.50 m and last 0.75 m of every walk are
+labelled walk_edge, walking without a position, and are withheld from the decode.
+
+Measured over the 72 straight-line passes: at its last question the decoder says 4.25 m and the
+person is at 4.25 m. It is 0.00 m behind. It does not reach its own speed cap on a single one of
+the 72 passes, and the cruising speed of 1.250 m/s is slower than the 1.298 m/s the model assumes.
+The whole median shortfall of 0.75 m is walking that happens after the last window it is given.
+
+THE DOT IS NOT WRONG WHERE IT STOPS. It is exactly right about the last moment anyone asked.
+
+  window budget predicts the shortfall      r = +0.807
+  emission strength predicts the shortfall  r = -0.025
+
+Per participant, worst first. The emission column runs the WRONG WAY for the obvious explanation:
+
+  participant  emissions  walk windows  shortfall  tracked to end
+  P3             1.430      4 of 10      1.32 m        15 %
+  P6             1.336      4 of 10      1.32 m        20 %
+  P4             1.522      4 of 10      1.00 m        20 %
+  P2             1.189      4 of 10      0.91 m        35 %
+  P1             1.134      5 of 11      0.50 m        60 %
+  P5             1.109      5 of 11      0.00 m        80 %
+
+The two the radio sees BEST, P4 and P3, track worst. The two it sees WORST, P5 and P1, track best.
+What separates them is the middle column. P1 and P5 get five walk windows per pass and everyone
+else gets four, and one more window is one more transition, which is 1.298 m more reach.
+
+So the answer to "why P3" is that P3 walks the line fast enough to span four windows rather than
+five. Stalling is a symptom of walking quickly, not of being hard to see.
+
+One note on the operator's impression: P3 as worst is confirmed. P2 as near perfect is not. P2 is
+mid-table at 0.91 m and 35 percent; P5 is the one that is actually near perfect. The eye reports
+rank badly, which is why the measurement came first.
+
+Median signed offset, red minus green: +0.000 m. The D1 render fix of 17 September holds and no
+constant offset has returned.
+
+
+5. DID THE FIX SHIP, AND WHAT DID THE GUARD SHOW
+
+THE MODEL FIX DID NOT SHIP.
+
+Forced alignment was implemented as specified, as a flag on the bounded decoder, default off, with
+the live unbounded decoder untouched. Three bars were set before it ran. It clears two:
+
+  stall fraction falls to near zero        36.7 -> 100.0 percent tracked to end, stall 0.0    PASS
+  error stays within the 0.11 m band       0.323 -> 0.815 m, which is 0.49 m worse            FAIL
+  beats dead reckoning on >1 pairing       beats it on 9 of 9, 0.815 m against 1.031 m        PASS
+
+And the cost that decides it: LINE IDENTIFICATION COLLAPSES FROM 65.0 TO 29.2 PERCENT, worse on
+9 of 9 cross-day pairings.
+
+THE ABLATION IS THE FINDING WORTH KEEPING. Pinning changes two things at once: it widens the
+decode to the whole declared pass, and it pins both ends. A variant doing only the first lands in
+exactly the same place:
+
+  decode the walk core only, as shipped    line 65.0 %   err 0.323 m   to end  36.7 %
+  widen the window, no pin                 line 29.2 %   err 0.815 m   to end 100.0 %
+  widen the window and pin both ends       line 29.2 %   err 0.815 m   to end 100.0 %
+
+The terminal pin costs NOTHING on its own. The WIDENING costs everything: 35.8 line points and
+0.49 m. So the restriction to the pass core is not an oversight that causes the stall. It is
+LOAD-BEARING. The same four windows that cannot reach the end of the line are what keep the line
+decision right, and the stall is the price of the accuracy.
+
+A further check, because it is the obvious worry. If stalling meant the tracker was struggling,
+stalled passes should be the ones it gets wrong. They are not:
+  tracked to the far end   46 passes   line correct 76.1 %
+  stopped short            74 passes   line correct 82.4 %
+
+WHAT DID SHIP is a render change, and only a render change. The drawing never claims more arc
+length than the decoder committed, and when a run ends it HOLDS at that last decision for the rest
+of the declared walk instead of vanishing to the room centre. Measured over the same 120 passes,
+time per pass with red drawn at the room centre while the person is still walking went from
+0.30 s to 0.00 s. Metrics are untouched: the 5.2 render summary is identical to 5.1's.
+
+
+6. WHERE THE NEW RENDERS ARE AND WHAT TO LOOK FOR
+
+runs/constrained/demo/   13 videos and 13 poster frames
+runs/constrained/demo/ACCEPTANCE.md   the per-pass table to check each video against
+
+Regenerate the whole set with one command and no staging step:
+  scripts/render_demo.sh
+
+WHAT TO LOOK FOR IN P3's VIDEO. The file is named by code name inside runs/, and
+runs/constrained/demo/ACCEPTANCE.md says which one is P3. The red dot advances
+cleanly to about four fifths of the line and then STOPS AND HOLDS there while green walks on to
+the 5 m mark. It no longer disappears to the middle of the room. That hold is the decoder running
+out of windows and it is an honest picture of a real limitation.
+
+And the number to know before watching it: P3's recording NAMES THE RIGHT LINE ON 17 OF 20 PASSES
+while reaching the far end on 3 of 20. It is simultaneously the worst-looking video in the set and
+one of the most accurate. The eye reads the gap, and the gap is not the result.
+
+
+7. WHAT FAILED
+
+Three things, all of them mine, all fixed, all recorded in reports/CLEANUP_LOG_2026-09-18.md:
+
+  a) Two .DS_Store files under data/ deleted by an unscoped tidy command. Section 1. NOT
+     recoverable. No capture data lost.
+  b) 4.0 G swept into git by moving files out of gitignored data/ into un-gitignored testing/.
+     Rewound, gitignored, reclaimed. .git is now 498 M.
+  c) The reports consolidation silently degraded 20 report-consistency tests to SKIPS, because
+     the documents they check had moved. A skip is worse than a failure here: the guarantee stops
+     being enforced and nothing says so. A redirect map was added and 13 came straight back; the
+     rest wait on this file, which had not been written yet.
+
+Two smaller ones caught by measurement rather than by reading:
+  d) The retire set was computed by an AST walk, as the brief required. One test imports a retired
+     module inside a subprocess code STRING, which an AST walk cannot see. Caught by running the
+     suite. That file was split rather than retired, because three of its five tests guard the
+     default artefact roots, which still ship.
+  e) The render hold was keyed by the last labelled window of a pass while the drawing's runs end
+     at the last walk-mode window, so the lookup never matched and the fix silently did nothing.
+     The output looked plausible. Caught because the centre-time metric did not move.
+
+FINAL STATE
+  suite                    469 passed, 15 skipped, 0 failed
+  rescore from artefacts   rc=0, every headline rebuilt
+  free-movement never read TRUE, over 18 recordings
+  retired never read       TRUE, cohort is the six
+  frozen artefacts         4 of 4 byte-identical
+  new freeze               runs/TRACKING_FROZEN_2026-09-18b.json, earlier freezes not overwritten
+  identification branch    untouched

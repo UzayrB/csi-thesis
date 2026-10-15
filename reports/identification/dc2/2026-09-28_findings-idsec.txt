@@ -1,0 +1,20 @@
+PASSED
+idsec, DC2 identification, secondary rows P1-REV and P7, scored once.
+
+
+---
+
+# DC2 identification, secondary rows P1-REV and P7 (2026-09-28)
+
+Scored once by `pipeline/identify/idsec_dc2_score.py` against addendum 2026-09-24 section 3 (SHA-256 3ca7a0ed30ca8395...) and addendum E (SHA-256 42b7dcd26d6e33e0...), with the frozen id29 features, heads and statistics. Secondary: P1-REV neither replaces nor rescues analysis P1, and a figure pooling A_fwd and A_rev is exploratory.
+
+| row | accuracy % | 95% interval (participants) | chance % | p | n |
+|---|---|---|---|---|---|
+| P1-REV, A_rev, day 1 natural to day 2 natural, PRIMARY | 20.0 | [0.0, 53.33] | 16.67 | 0.3906 | 30 |
+| P1-REV, A_rev, day 1 natural to day 2 natural, SECONDARY (post hoc) | 30.0 | [10.0, 53.33] | 16.67 | 0.031 | 30 |
+| P1-REV, A_rev, day 1 natural to day 2 natural, S0 (control) | 50.0 | [26.67, 76.67] | 16.67 | 0.016 | 30 |
+| P7, A_fwd, day 1 slow to day 2 slow, PRIMARY | 16.67 | [3.33, 36.67] | 16.67 | 0.5624 | 30 |
+| P7, A_fwd, day 1 slow to day 2 slow, S0 (control) | 30.0 | [6.67, 60.0] | 16.67 | 0.1658 | 30 |
+| P7, A_fwd, day 1 fast to day 2 fast, PRIMARY | 40.0 | [16.67, 63.33] | 16.67 | 0.0559 | 30 |
+| P7, A_fwd, day 1 fast to day 2 fast, S0 (control) | 33.33 | [20.0, 46.67] | 16.67 | 0.0889 | 30 |
+

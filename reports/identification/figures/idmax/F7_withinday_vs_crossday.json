@@ -1,0 +1,8 @@
+{
+ "script": "pipeline/identify/id27_report.py",
+ "figure": "F7_withinday_vs_crossday",
+ "sources": [
+  "id26_final",
+  "id21_baselines"
+ ]
+}

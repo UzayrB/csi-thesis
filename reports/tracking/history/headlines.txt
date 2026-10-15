@@ -1,0 +1,42 @@
+TDR-03 HEADLINES, rewritten 2026-09-24 08:24 SAST by the cleanup session
+
+The version dated 2026-09-18, and every one-line stage result appended to it until 2026-09-24, is in
+git at the tag pre-cleanup (git show pre-cleanup:reports/HEADLINES.txt). Stages still append their
+one-line results below the last section.
+
+TRACKING, Room A, frozen for DC2 (freeze 23h)
+  "Line accuracy of the committed decision (semi-bounded: the operator gives the start press only),
+  median over the nine Room A cross-day pairings: 62.50 % [30.00, 86.67] pre-registered; 73.33 %
+  [35.00, 87.50] post-amendment. The post-amendment figure ships a_veto_1.0, which passes the ship
+  rule only under condition (f) as amended by the operator on 2026-09-23, post hoc; paired against
+  the pre-registered configuration, +3.80 points [0.83, 6.94]. Chance is 8.3 %. Room A only:
+  cross-room generalisation is untested until DC2 (26 to 27 September)."
+  Source: runs/TRACKING_FROZEN_2026-09-23h.json, headline_semibounded; reports/MODEL_FREEZE_DC2.md.
+
+IDENTIFICATION, six participants, chance 16.67 percent. Room A is closed; DC2 is pre-registered
+  The only quotable figures are in reports/ID_QUOTABLE_2026-09-23.md. On Room A, gait is at chance
+  across days.
+  - Nested headline, cross-day, leave one session out: 15.83 percent [10.28, 21.67], p 0.71; the
+    nine pairings pooled give 19.26 [15.83, 22.96].
+  - Cohort curve, cross-day: 49.33 at two people (chance 50), 32.44 at three (33.3), 15.83 at six
+    (16.7). Every size sits at chance.
+  - S0, oracle speed alone, is a CONTROL and never a result: 32.50 [23.89, 42.50] cross-day, p 0.003.
+  - The CNN secondary, POST HOC, is the only family above chance: 27.22 [21.11, 33.61], p 0.001,
+    falling to 23.89 [17.22, 31.39], p 0.013, with speed regressed out of its embedding.
+  - Within a day the person and the recording are the same variable, so within-day figures are
+    RECORDING RECOGNITION and are quoted only beside the recording-signature reference.
+  Withdrawn (reports/IDENTIFICATION_2026-09-18.md, section 2026-09-23c):
+  - The earlier line here, "the gait question is YES on 3 of 9 pairings", is withdrawn. Its
+    speed-removed arm rested on cadence resolved with oracle speed and on test-set head selection;
+    under nested evaluation the gait question is answered no.
+  - The earlier figures are withdrawn too: 25.8 percent across days, three-person 50.5 percent and
+    two-person 66.0 percent. They were inflated by picking the head on the test session; the nested
+    figures above replace them.
+  EXPLORATORY, 2026-09-23f (section 2026-09-23f of the same report), none of it replacing a
+  quotable figure:
+  - Pace from walk start and end scores 36.11 percent [19.44, 52.78], p 0.011, on A_fwd, nested
+    leave one session out.
+  - Gait without pace scores 22.22 [8.33, 41.67], p 0.29, and no gait representation built here
+    beats pace.
+  DC2 identification is pre-registered in reports/PREREG_ID_DC2_2026-09-23.md with addenda B and C.
+  It is scored once, by pipeline/identify/id29_dc2_score.py and pipeline/identify/idgp_dc2_score.py.

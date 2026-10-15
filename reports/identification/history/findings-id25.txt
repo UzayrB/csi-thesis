@@ -1,0 +1,38 @@
+PASSED
+id25, learned models (item 8), with the id26b diagnostics. 2026-09-23 13:53 SAST.
+
+Results: runs/identify/idmax/id25_learned/results.json and id26b_cnn_diag/results.json. Four
+architectures, each under 50k parameters (prototypical MLP 47.6k, 1D CNN on stride-normalised
+cycles 7.6k, 2D CNN on 3.0 s Doppler spectrogram CROPS 10.4k, triplet embedding 47.6k), a fixed
+epoch budget, five seeds, CPU (the GPU gate was closed: tracking held it at 99 percent). The
+architecture is chosen inside each fold by inner accuracy; the five-seed ensemble is scored.
+
+THE LEARNED FAMILY IS THE ONLY ONE ABOVE CHANCE CROSS-DAY.
+  cross-day LOSO           27.22 [21.11, 33.61] p 0.001, the 2D CNN chosen in all three folds
+                           (per fold 24.17, 30.83, 26.67; single seeds 16.7 to 29.2, the mean over
+                           seeds 23.06, and the spread of that mean over seeds 2.65)
+  nine pairings pooled     22.59 [17.96, 27.59] p 0.001 (single-session training is weaker: 17.5
+                           to 25.0; two training sessions give 24.2 to 30.8)
+  WITHIN-DAY temporal      22.92 [16.67, 29.86] p 0.048
+  AdaBN, TRANSDUCTIVE      LOSO folds 30.83, 30.83, 27.50 against 24.17, 30.83, 26.67 without
+Edge-line recall, LOSO: E_col1 22.2, E_col5 22.2, E_row1 38.9, E_row5 22.2.
+
+IS IT PACE? The brief's speed diagnostic, applied to the CNN's 64-d penultimate embedding
+(id26b; the retrained five-seed ensemble reproduces 27.22 exactly, fold by fold):
+  logistic head on the embedding                     30.00 [23.33, 37.50] p 0.001
+  same, ORACLE speed regressed out (training fit)    23.89 [17.22, 31.39] p 0.013
+  same, test speeds shuffled inside the session      27.78 [21.11, 35.28] p 0.001
+  linear probe R^2, speed from embedding             0.118 (per seed -0.10 to 0.25)
+  substitution: another participant's pass, same session and line, changes 72.5 percent of decisions
+  agreement with the S0 speed classifier             20.8 percent against 15.3 expected by chance
+READING. About half of the CNN's margin over chance rides on the speed-aligned direction of its
+embedding (30.0 falls to 23.9 when true speed is removed, and not when a shuffled speed is). What
+remains, 23.89, has an interval whose lower bound clears chance by 0.55 points, under one pass per
+fold. The CNN reads SOMETHING beyond oracle pace, weakly, and it is not established as gait. The
+decisions are signal-driven (72.5 percent change under substitution) but partly collapse onto
+some classes.
+
+THIS IS NOT THE RUN'S HEADLINE. The pre-defined final procedure (id26) picks, per fold, whichever of
+the classical and learned selections has the higher INNER accuracy, and it picked classical in every
+fold. Reporting the learned family's 27.22 as THE result would be choosing a family after seeing the
+test sessions. It is a family row in the sweep table, and the one worth a confirmatory test on DC2.

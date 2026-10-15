@@ -1,0 +1,47 @@
+PASSED
+id19, the IDMAX audit: signal bank, feature bank, the three open issues. 2026-09-23 12:25 SAST.
+
+Results: runs/identify/idmax/id19_audit/results.json. Bank: runs/identify/idmax/bank/ (360 passes,
+three links on one 150 Hz grid). Features: runs/identify/idmax/features/<variant>.npz (360 x 8517),
+seven variants, every output contract MET.
+
+OPEN ISSUE 1, the reproduction statistic. RESOLVED. 25.833 (19b, id8 reproduction_check.
+oracle_mean_pct) and 25.926 (id11) are the SAME statistic, the mean over the nine cross-day
+pairings; both medians are 26.667. The 0.093-point gap is one pass net over 1080 test decisions:
+five pairings differ by exactly one pass (+1, +1, +1, -1, -1). A tie or solver-order difference in
+the head fit, not a different quantity.
+
+OPEN ISSUE 2, what the old walk_edge span holds. RESOLVED, and the 11.0 s figure is corrected.
+walk_edge (first to last window START of the pass, as id13 cut it) is 9.0 s median (p10 8.0,
+p90 11.0), not 11.0. Probably 11.0 counted to the last window's END (9 s plus the 2 s window);
+that is an inference, not checked against id11's code. Its content, by motion energy relative to
+the pass's own steady median:
+  3.5 s BEFORE the start press, energy 0.88 to 0.96 of steady: the approach walk and the turn onto
+      the line. Not standing: only 3 percent of it is below half the steady energy.
+  4.3 s steady walking between the presses: 47.7 percent of the span.
+  1.4 s AFTER the end press, energy falling from 1.0 to 0.84: braking and turning.
+  2 of 360 spans start within 2 s of the previous pass's end press.
+So about half of every walk_edge feature came from acceleration, turning and braking, not steady
+gait. The steady span (press to press) is used from here on, with walk_edge kept as a variant.
+
+OPEN ISSUE 3, CSI-only cadence. BUILT, and on this rig it barely measures cadence. Three
+estimators (Welch peak, autocorrelation cycle, peak-picked steps) per channel and link, harmonic
+resolved by agreement across estimators and links, no speed of any kind:
+  cadence p10/p50/p90 1.41 / 1.77 / 2.26 Hz (steady span)
+  median fraction of estimates agreeing within 0.1 Hz: 0.33; majority agreement on 4.4 percent
+  of passes
+  median spread between the three links' cadences: 0.60 Hz; within 0.1 Hz on 1.1 percent
+  within-person ICC across all passes: 0.018 (cadence is not stable within a person)
+  correlation with ORACLE speed, as a validity diagnostic only: r = 0.156
+A cadence that the three links disagree on by 0.6 Hz, that does not repeat within a person and
+that barely tracks walking speed is not being measured. This agrees with id12, where envelope-band
+periodicity separated walking from a standing person at an AUC of only 0.53. The steady span holds
+3.8 gait cycles at the median, and the Welch resolution at that length is about 0.3 Hz.
+
+SUBCARRIERS. 128 raw values (LLTF then HT-LTF); 0, 1, 27 to 37, 64 and 96 to 103 dropped by a fixed
+mask, and 93 to 95 dropped after measurement (median amplitude 1.0 to 2.2 on all three links).
+103 subcarriers remain.
+
+CLOCKS. Presses, windows and frames share the host monotonic clock; packets are timed on the
+receiver clock mapped by the lower envelope of the host lag (median serial-drain lag 23 ms, every
+link, every recording).

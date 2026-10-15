@@ -1,0 +1,47 @@
+PARTIAL
+id26, the final evaluation (item 9). 2026-09-23 13:41 SAST; checks to 13:53.
+PARTIAL because its speed diagnostic is invalid for the random-forest head (fault 3 below).
+
+Results: runs/identify/idmax/id26_final/results.json, frozen_config_posthoc_loso.json,
+speed_diag_check.json.
+
+THE FINAL NESTED WINNER, per fold the higher inner accuracy of the classical and learned selections:
+classical in all 48 folds.
+  cross-day LOSO                 15.83 [10.28, 21.67] p 0.71
+  nine pairings pooled           19.26 [15.83, 22.96] p 0.033 (mean of pairings 19.26, median 19.17)
+  WITHIN-DAY temporal            32.64 [23.59, 40.97] p 0.001
+  WITHIN-DAY leave-one-line-out  33.33 [28.45, 37.95] p 0.001
+A caution on the rule itself, stated because it decided the headline: the classical inner accuracy
+is the maximum over 174 configurations and 18 heads, and the learned one over four architectures,
+so the comparison favours classical by the winner's curse. The rule was fixed before the run and
+stands.
+
+COHORT SIZE, final winner, cross-day LOSO (mean over all subsets, chance): 2 people 49.33 (50),
+3 32.44 (33.3), 4 23.50 (25), 5 18.83 (20), 6 15.83 (16.7). At chance at EVERY cohort size; no
+cohort reaches a mean above 50. Within-day temporal: 62.50, 46.94, 40.56, 36.39, 32.64; above 50
+only at two people, and within-day is recording recognition (the no-gait signature scores 91.7 at
+six).
+
+SESSION-ID CONTROL on the final (frozen) features: 80.33 [77.92, 82.47] against 33.33, p 0.001.
+The frozen features name a new person's DAY four times in five. That is the mechanism of the
+cross-day collapse.
+
+DC2 PRE-REGISTERED CONFIGURATION, by the section 6 rule (chosen most often across the nine
+cross-day folds): steady_raw / U_all_gait / gait-band mean / all links / per-line z / random forest.
+It was chosen in 2 of 9 folds, tied three ways, and the tie went to the higher mean inner
+accuracy. A preference of 2 in 9 is barely one. POST HOC, scored on Room A LOSO folds whose sessions
+its selection saw as training: 20.83 [17.22, 24.17].
+
+SPEED DIAGNOSTIC. Linear probe R^2 for speed from the frozen features: 0.143, 0.187, -0.042, mean
+0.096. FAULT 3 of the run, found by checking rather than believing: the residualised accuracy for
+the RF head read 27.50 against 19.72 un-residualised on the same code path. Removing information
+cannot raise accuracy. Mechanism, confirmed: the test-side residual X - b*speed uses the TEST pass's
+oracle speed, and where the slope differs between days that re-injects speed; with test speeds
+shuffled inside the session the RF falls to 16.39. The linear heads are unaffected (logistic 16.39
+plain, 14.72 residualised, 16.11 shuffled). The 27.50 is NOT QUOTABLE. For linear heads the
+diagnostic is valid, and it shows no pace reliance in the classical features. S0: 32.50.
+
+POST-HOC CEILING: selected on the test data, not a result. The best of 696 configuration-and-head
+pairs scored directly on the LOSO test sessions: 28.33 (Doppler contour shapes, walk_edge span,
+Hampel, random forest); the top five are all Doppler contours with a random forest, 26.7 to 28.3.
+The median over all 696 is 17.78.
