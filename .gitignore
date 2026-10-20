@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.DS_Store
+runs/live/
+runs/identify/engine/models/deploy_all5_v5/feat_rf.pkl
+runs/identify/engine/models/deploy_all5_v5/feat_rf_prior.pkl
+runs/identify/engine/models/deploy_all5_v5/feat_rf_pace_prior.pkl
+runs/identify/engine/models/deploy_all5_v5/feat_et_pace_prior.pkl

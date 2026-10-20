@@ -1,0 +1,59 @@
+{
+ "label": "development evaluation, all data seen",
+ "built": "2026-10-21T16:55:36",
+ "bank": "bank_T4.0_v4",
+ "layout": "home",
+ "rx2": [
+  -0.5,
+  2.5
+ ],
+ "walks": "the home-layout line-A tracking walks of A1, A2, A3, B1 and B2",
+ "all": {
+  "accuracy_pct": 90.83,
+  "n": 120,
+  "wrong": 11
+ },
+ "A_fwd": {
+  "accuracy_pct": 98.33,
+  "n": 60,
+  "wrong": 1
+ },
+ "A_rev": {
+  "accuracy_pct": 83.33,
+  "n": 60,
+  "wrong": 10
+ },
+ "by_session": {
+  "A1": {
+   "accuracy_pct": 79.17,
+   "n": 24,
+   "wrong": 5
+  },
+  "A2": {
+   "accuracy_pct": 87.5,
+   "n": 24,
+   "wrong": 3
+  },
+  "A3": {
+   "accuracy_pct": 95.83,
+   "n": 24,
+   "wrong": 1
+  },
+  "B1": {
+   "accuracy_pct": 95.83,
+   "n": 24,
+   "wrong": 1
+  },
+  "B2": {
+   "accuracy_pct": 95.83,
+   "n": 24,
+   "wrong": 1
+  }
+ },
+ "RULE_detected_used": false,
+ "same_function_at_the_identification_spot": {
+  "accuracy_pct": 96.9,
+  "n": 419,
+  "wrong": 13
+ }
+}

@@ -1,0 +1,286 @@
+diff --git a/examples/get-started/csi_recv/main/app_main.c b/examples/get-started/csi_recv/main/app_main.c
+index 4932cd2..3ab4c7d 100644
+--- a/examples/get-started/csi_recv/main/app_main.c
++++ b/examples/get-started/csi_recv/main/app_main.c
+@@ -29,16 +29,47 @@
+ #define CONFIG_LESS_INTERFERENCE_CHANNEL   11
+ #if CONFIG_IDF_TARGET_ESP32C5 || CONFIG_IDF_TARGET_ESP32C61 || (CONFIG_IDF_TARGET_ESP32C6 && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 4, 0))
+ #define CONFIG_WIFI_BAND_MODE               WIFI_BAND_MODE_2G_ONLY
+-#define CONFIG_WIFI_2G_BANDWIDTHS           WIFI_BW_HT40
+-#define CONFIG_WIFI_5G_BANDWIDTHS           WIFI_BW_HT40
++#define CONFIG_WIFI_2G_BANDWIDTHS           WIFI_BW20
++#define CONFIG_WIFI_5G_BANDWIDTHS           WIFI_BW20
+ #define CONFIG_WIFI_2G_PROTOCOL             WIFI_PROTOCOL_11N
+ #define CONFIG_WIFI_5G_PROTOCOL             WIFI_PROTOCOL_11N
+ #else
+-#define CONFIG_WIFI_BANDWIDTH           WIFI_BW_HT40
++#define CONFIG_WIFI_BANDWIDTH           WIFI_BW20
+ #endif
+ 
+-#define CONFIG_ESP_NOW_PHYMODE           WIFI_PHY_MODE_HT40
++#define CONFIG_ESP_NOW_PHYMODE           WIFI_PHY_MODE_HT20
+ #define CONFIG_ESP_NOW_RATE             WIFI_PHY_RATE_MCS0_LGI
++/* INERT ON THIS HARDWARE. Left at 0.
++ *
++ * This was set to 1 on 7 Sep 2026 to lock the RX gain, because roughly 40 %
++ * of the amplitude variance in a static room is common-mode: every
++ * subcarrier scaling together, which is what an AGC step looks like and
++ * which carries no spatial information.
++ *
++ * It achieves nothing on the ESP32. Further down this file, esp-csi guards
++ * the whole gain block with
++ *
++ *     #if CONFIG_IDF_TARGET_ESP32S3 || ..C3 || ..C5 || ..C6 || ..C61
++ *     #define CONFIG_GAIN_CONTROL 1
++ *     #endif
++ *
++ * and the plain ESP32 is not in that list, so CONFIG_GAIN_CONTROL is never
++ * defined here, the block is not compiled, and
++ * esp_csi_gain_ctrl_set_rx_force_gain() is never called. The giveaway was
++ * the "unused variable 'agc_gain'" warning present in every build.
++ *
++ * The component's own header agrees: WIFI_CSI_PHY_GAIN_ENABLE is defined
++ * for the same five targets and not for ESP32, and the component ships as a
++ * precompiled .a for esp32 with no source. agc_gain is also absent from
++ * wifi_pkt_rx_ctrl_t on every target in IDF 5.4, so the gain cannot even be
++ * read, let alone fixed.
++ *
++ * Consequences are handled on the host side, not here: the identification
++ * branch can use a gain-invariant representation, and the tracking branch
++ * has to treat the common-mode component as a nuisance variable rather than
++ * assume an absolute amplitude level. Changing this back to 1 produces a
++ * byte-identical binary, so no reflash is needed either way.
++ */
+ #define CONFIG_FORCE_GAIN                   0
+ 
+ #if CONFIG_IDF_TARGET_ESP32C5 || CONFIG_IDF_TARGET_ESP32C61
+@@ -96,20 +127,20 @@ static void wifi_init()
+ 
+     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
+ #if CONFIG_IDF_TARGET_ESP32C5
+-    if ((CONFIG_WIFI_BAND_MODE == WIFI_BAND_MODE_2G_ONLY && CONFIG_WIFI_2G_BANDWIDTHS == WIFI_BW_HT20)
+-            || (CONFIG_WIFI_BAND_MODE == WIFI_BAND_MODE_5G_ONLY && CONFIG_WIFI_5G_BANDWIDTHS == WIFI_BW_HT20)) {
++    if ((CONFIG_WIFI_BAND_MODE == WIFI_BAND_MODE_2G_ONLY && CONFIG_WIFI_2G_BANDWIDTHS == WIFI_BW20)
++            || (CONFIG_WIFI_BAND_MODE == WIFI_BAND_MODE_5G_ONLY && CONFIG_WIFI_5G_BANDWIDTHS == WIFI_BW20)) {
+         ESP_ERROR_CHECK(esp_wifi_set_channel(CONFIG_LESS_INTERFERENCE_CHANNEL, WIFI_SECOND_CHAN_NONE));
+     } else {
+         ESP_ERROR_CHECK(esp_wifi_set_channel(CONFIG_LESS_INTERFERENCE_CHANNEL, WIFI_SECOND_CHAN_BELOW));
+     }
+ #elif (CONFIG_IDF_TARGET_ESP32C6 && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 4, 0)) || CONFIG_IDF_TARGET_ESP32C61
+-    if (CONFIG_WIFI_BAND_MODE == WIFI_BAND_MODE_2G_ONLY && CONFIG_WIFI_2G_BANDWIDTHS == WIFI_BW_HT20) {
++    if (CONFIG_WIFI_BAND_MODE == WIFI_BAND_MODE_2G_ONLY && CONFIG_WIFI_2G_BANDWIDTHS == WIFI_BW20) {
+         ESP_ERROR_CHECK(esp_wifi_set_channel(CONFIG_LESS_INTERFERENCE_CHANNEL, WIFI_SECOND_CHAN_NONE));
+     } else {
+         ESP_ERROR_CHECK(esp_wifi_set_channel(CONFIG_LESS_INTERFERENCE_CHANNEL, WIFI_SECOND_CHAN_BELOW));
+     }
+ #else
+-    if (CONFIG_WIFI_BANDWIDTH == WIFI_BW_HT20) {
++    if (CONFIG_WIFI_BANDWIDTH == WIFI_BW20) {
+         ESP_ERROR_CHECK(esp_wifi_set_channel(CONFIG_LESS_INTERFERENCE_CHANNEL, WIFI_SECOND_CHAN_NONE));
+     } else {
+         ESP_ERROR_CHECK(esp_wifi_set_channel(CONFIG_LESS_INTERFERENCE_CHANNEL, WIFI_SECOND_CHAN_BELOW));
+@@ -134,6 +165,52 @@ static void wifi_esp_now_init(esp_now_peer_info_t peer)
+ 
+ }
+ 
++/* ---------------------------------------------------------------------------
++ * Base64 CSI payload. PROJECT MODIFICATION, not upstream esp-csi.
++ *
++ * Upstream prints all 256 CSI values as decimal text, costing about 900 bytes
++ * per row. At 921600 baud that caps the console near 102 rows per second, and
++ * because ets_printf blocks until the FIFO drains, the packet rate ends up
++ * limited by printing rather than by the radio.
++ *
++ * Base64 of the raw payload is a fixed 344 characters, so a row costs about
++ * 440 bytes and the ceiling rises to roughly 209 rows per second. The fixed
++ * width also means bandwidth no longer varies with the values themselves.
++ *
++ * The raw int8 buffer is emitted UNSCALED, with the gain compensation factor
++ * sent alongside as an integer scaled by 10000. Scaling on the device would
++ * widen every value to int16 and double the payload, and keeping the factor
++ * explicit lets the host see what the AGC is actually doing.
++ * ------------------------------------------------------------------------ */
++static const char CSI_B64_ALPHABET[] =
++    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
++
++static void csi_b64_encode(const int8_t *in, int len, char *out, int out_size)
++{
++    int o = 0;
++
++    for (int i = 0; i < len; i += 3) {
++        uint32_t v = ((uint32_t)(uint8_t)in[i]) << 16;
++
++        if (i + 1 < len) {
++            v |= ((uint32_t)(uint8_t)in[i + 1]) << 8;
++        }
++        if (i + 2 < len) {
++            v |= (uint32_t)(uint8_t)in[i + 2];
++        }
++        if (o + 4 >= out_size) {
++            break;
++        }
++
++        out[o++] = CSI_B64_ALPHABET[(v >> 18) & 0x3F];
++        out[o++] = CSI_B64_ALPHABET[(v >> 12) & 0x3F];
++        out[o++] = (i + 1 < len) ? CSI_B64_ALPHABET[(v >> 6) & 0x3F] : '=';
++        out[o++] = (i + 2 < len) ? CSI_B64_ALPHABET[v & 0x3F] : '=';
++    }
++
++    out[o] = '\0';
++}
++
+ static void wifi_csi_rx_cb(void *ctx, wifi_csi_info_t *info)
+ {
+     if (!info || !info->buf) {
+@@ -181,7 +258,7 @@ static void wifi_csi_rx_cb(void *ctx, wifi_csi_info_t *info)
+ #else
+     if (!s_count) {
+         ESP_LOGI(TAG, "================ CSI RECV ================");
+-        ets_printf("type,id,mac,rssi,rate,sig_mode,mcs,bandwidth,smoothing,not_sounding,aggregation,stbc,fec_coding,sgi,noise_floor,ampdu_cnt,channel,secondary_channel,local_timestamp,ant,sig_len,rx_format,len,first_word,data\n");
++        ets_printf("type,id,mac,rssi,rate,sig_mode,mcs,bandwidth,smoothing,not_sounding,aggregation,stbc,fec_coding,sgi,noise_floor,ampdu_cnt,channel,secondary_channel,local_timestamp,ant,sig_len,rx_format,len,first_word,gain_x10000,data_b64\n");
+     }
+ 
+     ets_printf("CSI_DATA,%d," MACSTR ",%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
+@@ -199,13 +276,25 @@ static void wifi_csi_rx_cb(void *ctx, wifi_csi_info_t *info)
+         csi = ((int16_t)(((((uint16_t)info->buf[i + 1]) << 8) | info->buf[i]) << 4) >> 4);
+         ets_printf(",%d", (int16_t)(compensate_gain * csi));
+     }
++    /* This target keeps the upstream decimal format, so it still closes the
++     * quoted list here. Only the branch below was changed to base64. */
++    ets_printf("]\"\n");
+ #else
+-    ets_printf(",%d,%d,\"[%d", info->len, info->first_word_invalid, (int16_t)(compensate_gain * info->buf[0]));
+-    for (int i = 1; i < info->len; i++) {
+-        ets_printf(",%d", (int16_t)(compensate_gain * info->buf[i]));
++    /* PROJECT MODIFICATION: base64 of the raw payload plus the gain factor,
++     * instead of 256 decimal values. See csi_b64_encode above for why. */
++    {
++        /* 256 bytes encode to 344 characters; 368 leaves room for the
++         * terminator and any longer payload a future bandwidth might bring. */
++        static char csi_b64[368];
++
++        csi_b64_encode((const int8_t *)info->buf, info->len, csi_b64, sizeof(csi_b64));
++
++        /* ets_printf has no float support, so the gain is sent as an integer
++         * scaled by 10000 and the host divides it back out. */
++        ets_printf(",%d,%d,%d,%s\n", info->len, info->first_word_invalid,
++                   (int)(compensate_gain * 10000.0f), csi_b64);
+     }
+ #endif
+-    ets_printf("]\"\n");
+     s_count++;
+ }
+ 
+diff --git a/examples/get-started/csi_send/main/app_main.c b/examples/get-started/csi_send/main/app_main.c
+index e26ee5b..be6abd0 100644
+--- a/examples/get-started/csi_send/main/app_main.c
++++ b/examples/get-started/csi_send/main/app_main.c
+@@ -20,6 +20,7 @@
+ 
+ #include "esp_mac.h"
+ #include "esp_log.h"
++#include "esp_timer.h"
+ #include "esp_wifi.h"
+ #include "esp_netif.h"
+ #include "esp_now.h"
+@@ -33,12 +34,12 @@
+ #define CONFIG_WIFI_2G_PROTOCOL             WIFI_PROTOCOL_11N
+ #define CONFIG_WIFI_5G_PROTOCOL             WIFI_PROTOCOL_11N
+ #else
+-#define CONFIG_WIFI_BANDWIDTH           WIFI_BW_HT40
++#define CONFIG_WIFI_BANDWIDTH           WIFI_BW20
+ #endif
+ 
+-#define CONFIG_ESP_NOW_PHYMODE           WIFI_PHY_MODE_HT40
++#define CONFIG_ESP_NOW_PHYMODE           WIFI_PHY_MODE_HT20
+ #define CONFIG_ESP_NOW_RATE             WIFI_PHY_RATE_MCS0_LGI
+-#define CONFIG_SEND_FREQUENCY               100
++#define CONFIG_SEND_FREQUENCY               150
+ 
+ #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
+ #define ESP_IF_WIFI_STA ESP_MAC_WIFI_STA
+@@ -103,7 +104,7 @@ static void wifi_init()
+         ESP_ERROR_CHECK(esp_wifi_set_channel(CONFIG_LESS_INTERFERENCE_CHANNEL, WIFI_SECOND_CHAN_BELOW));
+     }
+ #else
+-    if (CONFIG_WIFI_BANDWIDTH == WIFI_BW_HT20) {
++    if (CONFIG_WIFI_BANDWIDTH == WIFI_BW20) {
+         ESP_ERROR_CHECK(esp_wifi_set_channel(CONFIG_LESS_INTERFERENCE_CHANNEL, WIFI_SECOND_CHAN_NONE));
+     } else {
+         ESP_ERROR_CHECK(esp_wifi_set_channel(CONFIG_LESS_INTERFERENCE_CHANNEL, WIFI_SECOND_CHAN_BELOW));
+@@ -159,12 +160,34 @@ void app_main()
+     ESP_LOGI(TAG, "wifi_channel: %d, send_frequency: %d, mac: " MACSTR,
+              CONFIG_LESS_INTERFERENCE_CHANNEL, CONFIG_SEND_FREQUENCY, MAC2STR(CONFIG_CSI_SEND_MAC));
+ 
++    /* PROJECT MODIFICATION: schedule against a fixed deadline rather than
++     * sleeping a whole period after each send.
++     *
++     * Upstream slept 1000000/CONFIG_SEND_FREQUENCY microseconds AFTER
++     * esp_now_send returned, so the send call's own duration was added to
++     * every period and the achieved rate always fell short of the configured
++     * one. Measured here: 150 configured produced 125 Hz, and 80 produced
++     * 76.8 Hz. Tracking an absolute deadline makes the constant mean what it
++     * says, which matters because the achieved rate is the sampling rate of
++     * the whole experiment and ends up in the write-up. */
++    const int64_t period_us = 1000 * 1000 / CONFIG_SEND_FREQUENCY;
++    int64_t next_us = esp_timer_get_time();
++
+     for (uint32_t count = 0; ; ++count) {
+         esp_err_t ret = esp_now_send(peer.peer_addr, (const uint8_t *)&count, sizeof(count));
+         if (ret != ESP_OK) {
+             ESP_LOGW(TAG, "free_heap: %ld <%s> ESP-NOW send error", esp_get_free_heap_size(), esp_err_to_name(ret));
+         }
+ 
+-        usleep(1000 * 1000 / CONFIG_SEND_FREQUENCY);
++        next_us += period_us;
++        int64_t now_us = esp_timer_get_time();
++
++        if (next_us > now_us) {
++            usleep(next_us - now_us);
++        } else {
++            /* Fell behind: resynchronise instead of trying to catch up, which
++             * would burst packets and distort the very rate being measured. */
++            next_us = now_us;
++        }
+     }
+ }
+diff --git a/examples/get-started/csi_send/sdkconfig.defaults b/examples/get-started/csi_send/sdkconfig.defaults
+index 5b90ed9..c2b5adb 100644
+--- a/examples/get-started/csi_send/sdkconfig.defaults
++++ b/examples/get-started/csi_send/sdkconfig.defaults
+@@ -1,8 +1,33 @@
+-# This file was generated using idf.py save-defconfig. It can be edited manually.
+-# Espressif IoT Development Framework (ESP-IDF) 5.5.0 Project Minimal Configuration
++# This file was generated using idf.py save-defconfig or menuconfig [D] key. It can be edited manually.
++# Espressif IoT Development Framework (ESP-IDF) 6.2.0 Project Minimal Configuration
++#
++
++#
++# Partition Table
+ #
+ CONFIG_PARTITION_TABLE_OFFSET=0xa000
++# end of Partition Table
++
++#
++# Component config
++#
++
++#
++# Wi-Fi
++#
+ CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=128
+ CONFIG_ESP_WIFI_CSI_ENABLED=y
+ CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=n
++# end of Wi-Fi
++
++#
++# FreeRTOS
++#
++
++#
++# Kernel
++#
+ CONFIG_FREERTOS_HZ=1000
++# end of Kernel
++# end of FreeRTOS
++# end of Component config

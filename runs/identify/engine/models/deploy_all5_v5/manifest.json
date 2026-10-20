@@ -1,0 +1,88 @@
+{
+ "model": "deploy_all5_v5",
+ "engine_version": 5,
+ "T_s": 4.0,
+ "alpha": 0.5,
+ "training_sessions": [
+  "A1",
+  "A2",
+  "A3",
+  "B1",
+  "B2"
+ ],
+ "training_rooms": [
+  "A",
+  "B"
+ ],
+ "n_train": 1019,
+ "n_extra_windows": 12228,
+ "flags": {
+  "A1": "training windows every 0.05 s from 0.05 to 0.50 s after the press (F7's 0.15 and 0.30 included)",
+  "A3": "training windows' frames time-stretched by 0.9 and 1.1, pace v / s",
+  "A4": "three windows per press at 0, 0.15 and 0.30 s, one CAL-causal pool, only the 0 s window joins it",
+  "M3": "a sixth feature component, HistGradientBoostingClassifier(random_state=0) on rf_pace_prior's Prior-standardised matrix with pace (its state shared)",
+  "C2": "the feature components' weight a: 0.25 on a tracking walk in Room A when the model trained in Room A; 1 everywhere else",
+  "not_used": [
+   "A5",
+   "M2",
+   "P1",
+   "P2"
+  ]
+ },
+ "v5": {
+  "extra_feature_components": [
+   "hgb_pace_prior"
+  ],
+  "offsets": [
+   0.15,
+   0.3
+  ],
+  "room_weights": {
+   "trained": {
+    "A": 0.25,
+    "B": 1.0
+   },
+   "unseen": 1.0,
+   "identification": 1.0
+  }
+ },
+ "derived_from": "deploy_all5_v4",
+ "cnn_sha256": {
+  "cnn3_norm.pkl": "261e48a4692c65861ccba876a5d52a83bba114d543bbe957b24a8bf9ec3c9152",
+  "cnn_link0_norm.pkl": "caa087ae96d7995485538583104efb582acbf7bcaedbae66f29d5dd8cd7a5706",
+  "cnn_link1_norm.pkl": "f89d110146045163ede99b69f1117daf16bc97ad530c002923086877280cef71",
+  "cnn_link2_norm.pkl": "1275daaaab676eb2764c3897217305980953c903e336d5376059e608f5692362",
+  "cnn3_seed0.pt": "ff8f05da099ffcb6b4bd6da954d30b1861ff09c870ec0f56982a38115bacf903",
+  "cnn3_seed1.pt": "008c7a1e80908a78aa670f0d6d7a062d2437556b784086809d0a49f97616273e",
+  "cnn3_seed2.pt": "4246e3c26db9ae94e9e10f5e7e9850b907c4156b8513233c49a655b7dae59c43",
+  "cnn_link0_seed0.pt": "83fd8c360bbf7a8575a52a104ca6d9add00bccc569ee57f62a513ff5ab709ce2",
+  "cnn_link0_seed1.pt": "92068a9a8fb14910a5ee864cf3a8065891aed1528d190a9715844b500e197bf4",
+  "cnn_link0_seed2.pt": "fa7c3a0232c62ddc34916dbccf13ddea2b6ab97363298c13a688917ba94d244b",
+  "cnn_link1_seed0.pt": "e4608fb51736f46bcaba85da71d1202ae5a837e4d9c7759719f3f4b13b1b0c29",
+  "cnn_link1_seed1.pt": "9dc740de8e45eb85d7b252efafb8813d4c0aa2348c5d08d8359f4e28cf81bb4f",
+  "cnn_link1_seed2.pt": "45aece1f08354ff0e384e2dc72a6a41fece6f02034dbb055aa5cc212d6643edc",
+  "cnn_link2_seed0.pt": "16b619b11a8e1219f767ca2047a68d6b4d9212066c1f6d1e19668326c60b1787",
+  "cnn_link2_seed1.pt": "f6788a06baf22beef07550527373b33b7930bd533a3c98a78dee3fed52a71fd2",
+  "cnn_link2_seed2.pt": "202a09c111c9b5e47e1e7bc0e2705150dacd99be2dcc5d00d646ac3a1fa02937"
+ },
+ "config": {
+  "bank": "runs/identify/engine/bank_T4.0_v4",
+  "cols": "v2",
+  "layout": false,
+  "fn": false,
+  "amp_norm": false,
+  "engine_T": 4.0,
+  "engine_version": 4,
+  "alpha": 0.5
+ },
+ "bank": "runs/identify/engine/bank_T4.0_v4",
+ "code_commit_at_training": "798b08f6baf710dccf2771c6902c29d3368d40ad",
+ "plan": "runs/identify/v5/QUEUE_V5.md (Uzayr's brief)",
+ "configuration_source": "runs/identify/roomA/stores/split_A3.npz (the Room A run's A3-half choice)",
+ "use": "the rig's deployment model; never scores anything",
+ "label": "development evaluation, all data seen",
+ "built": "2026-10-10T18:33:01",
+ "seconds_training": 215.7,
+ "gs_adopted": false,
+ "manifest_note": "2026-10-10 19:57:06: gs_adopted added from deploy_all5_v4's manifest (the live app's deployment check requires it; found by step 6's smoke test); nothing else changed"
+}

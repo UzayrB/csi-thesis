@@ -1,0 +1,147 @@
+{
+ "label": "development evaluation, all data seen",
+ "built": "2026-09-30T09:48:41",
+ "T": 3.0,
+ "clock": {
+  "engine_windows_T3.0_at_decision": {
+   "n_frames": 1353844,
+   "median_ms": 0.1195,
+   "p99_ms": 0.5112,
+   "max_ms": 1.4926
+  },
+  "every_frame_at_arrival_0.5s": {
+   "n_frames": 11445742,
+   "median_ms": 0.1526,
+   "p99_ms": 0.651,
+   "max_ms": 4113330.9601
+  },
+  "wraps_total": 0,
+  "reboots_total": 1
+ },
+ "direction": {
+  "all": {
+   "accuracy_pct": 96.9,
+   "n": 419,
+   "wrong": 13
+  },
+  "B1": {
+   "accuracy_pct": 97.08,
+   "n": 240,
+   "wrong": 7
+  },
+  "B2": {
+   "accuracy_pct": 96.65,
+   "n": 179,
+   "wrong": 6
+  },
+  "natural": {
+   "accuracy_pct": 97.78,
+   "n": 180,
+   "wrong": 4
+  },
+  "slow": {
+   "accuracy_pct": 95.0,
+   "n": 120,
+   "wrong": 6
+  },
+  "fast": {
+   "accuracy_pct": 97.48,
+   "n": 119,
+   "wrong": 3
+  },
+  "A_fwd": {
+   "accuracy_pct": 97.62,
+   "n": 210,
+   "wrong": 5
+  },
+  "A_rev": {
+   "accuracy_pct": 96.17,
+   "n": 209,
+   "wrong": 8
+  },
+  "RULE_detected_used": true
+ },
+ "wifi_speed": {
+  "identification_all": {
+   "n": 419,
+   "nan": 0,
+   "pearson": 0.823,
+   "spearman": 0.841,
+   "median_abs_error_m_s": 0.1,
+   "median_ratio_wifi_over_press": 0.969,
+   "wifi_median_m_s": 1.175,
+   "press_median_m_s": 1.204,
+   "distinct_wifi_values": 14
+  },
+  "identification_natural": {
+   "n": 180,
+   "nan": 0,
+   "pearson": 0.604,
+   "spearman": 0.631,
+   "median_abs_error_m_s": 0.083,
+   "median_ratio_wifi_over_press": 0.966,
+   "wifi_median_m_s": 1.175,
+   "press_median_m_s": 1.222,
+   "distinct_wifi_values": 10
+  },
+  "identification_slow": {
+   "n": 120,
+   "nan": 0,
+   "pearson": 0.307,
+   "spearman": 0.426,
+   "median_abs_error_m_s": 0.077,
+   "median_ratio_wifi_over_press": 1.047,
+   "wifi_median_m_s": 1.029,
+   "press_median_m_s": 0.964,
+   "distinct_wifi_values": 8
+  },
+  "identification_fast": {
+   "n": 119,
+   "nan": 0,
+   "pearson": 0.755,
+   "spearman": 0.761,
+   "median_abs_error_m_s": 0.154,
+   "median_ratio_wifi_over_press": 0.897,
+   "wifi_median_m_s": 1.322,
+   "press_median_m_s": 1.517,
+   "distinct_wifi_values": 9
+  },
+  "tracking_all_information": {
+   "n": 600,
+   "nan": 0,
+   "pearson": 0.097,
+   "spearman": 0.076,
+   "median_abs_error_m_s": 0.315,
+   "median_ratio_wifi_over_press": 1.229,
+   "wifi_median_m_s": 1.571,
+   "press_median_m_s": 1.273,
+   "distinct_wifi_values": 37
+  }
+ },
+ "wait_after_window_s": {
+  "median": 0.0306,
+  "p90": 0.0483,
+  "max": 1.0,
+  "at_cap": 3
+ },
+ "extract_s": {
+  "median": 0.171,
+  "p95": 0.348
+ },
+ "information_other_T": {
+  "T2.5": {
+   "direction": {
+    "accuracy_pct": 90.45,
+    "n": 419,
+    "wrong": 40
+   }
+  },
+  "T3.5": {
+   "direction": {
+    "accuracy_pct": 97.85,
+    "n": 419,
+    "wrong": 9
+   }
+  }
+ }
+}
