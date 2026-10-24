@@ -36,10 +36,13 @@ def model_dir(name: str) -> str:
     return os.path.join(REPO_ROOT, "runs", "identify", "engine", "models", name)
 
 
-# The deployment model's name: the newest engine's that is built (v5 deploy_all5_v5, then v4 deploy_all5_v4...
+NUMBER_WORDS = {5: "five", 8: "eight", 9: "nine"}
+
+
+# The deployment model's name: the newest engine's that is built (v5s deploy_all5_v5s, then v5...
 def deployment_model() -> str:
     from pipeline.identify import engine as EN
-    for name in ("deploy_all5_v5", EN.model_name("deploy_all5"), "deploy_all5_x"):
+    for name in ("deploy_all5_v5s", "deploy_all5_v5", EN.model_name("deploy_all5"), "deploy_all5_x"):
         if os.path.exists(os.path.join(model_dir(name), "manifest.json")):
             return name
     return "deploy_all5"
@@ -72,6 +75,63 @@ def direction_mode() -> str:
 RIG_LAYOUTS = ("home", "id_spot")
 SPACE_REFUSED = ("SPACE refused: with RX2 at home the direction detector is not validated (runs/identify/engine/checks/"
                  "direction_home.json); press a (away from the TX) or t (towards it) as the walker starts on line A")
+POPUP_SOURCE = "popup"
+POPUP_REFUSED = ("SPACE refused: no path picked. Click the walk's path on the map window (one click gives its line and "
+                 "direction), then press SPACE here; a / t start a line-A walk (away from / towards the TX)")
+POPUP_PICK_M = 0.4
+POPUP_LANE_M = 0.18
+
+
+PATHS_FILE = os.path.join(REPO_ROOT, "runs", "public_model", "tracking_paths.json")
+
+
+# {path name: (start, end)} in name order, from the tracking sidecars (every *_walk.gt.json of the recorded...
+def tracking_paths(root: str = None) -> dict:
+    import glob
+    root = root or os.path.join(REPO_ROOT, "data")
+    files = sorted(glob.glob(os.path.join(root, "room_*", "session_*", "*_walk.gt.json")))
+    if not files and os.path.exists(PATHS_FILE):
+        with open(PATHS_FILE, encoding="utf-8") as fh:
+            return {k: (tuple(v[0]), tuple(v[1])) for k, v in sorted(json.load(fh)["paths"].items())}
+    geo = {}
+    for f in files:
+        with open(f, encoding="utf-8") as fh:
+            passes = json.load(fh).get("passes", [])
+        for p in passes:
+            ac = json.loads(p["anchor_coords"]) if isinstance(p["anchor_coords"], str) else p["anchor_coords"]
+            se = (tuple(float(v) for v in ac[0]), tuple(float(v) for v in ac[-1]))
+            if geo.setdefault(p["path_name"], se) != se:
+                raise SystemExit(f"REFUSED: the tracking sidecars disagree on {p['path_name']}: {geo[p['path_name']]} and "
+                                 f"{se} ({f})")
+    if len(geo) != 12:
+        raise SystemExit(f"REFUSED: {len(geo)} paths in the {len(files)} tracking sidecars under {root}, not twelve")
+    return {k: geo[k] for k in sorted(geo)}
+
+
+_SCREEN_PATHS = {}
+
+
+# Tracking_paths(), read once per process (the screen and the pop-up draw from it).
+def screen_paths() -> dict:
+    if not _SCREEN_PATHS:
+        _SCREEN_PATHS.update(tracking_paths())
+    return _SCREEN_PATHS
+
+
+# The path as the map draws it: moved POPUP_LANE_M to its own left when its reverse is also offered (so a...
+def lane_of(path: str, paths: dict) -> tuple:
+    s, e = (np.asarray(x, float) for x in paths[path])
+    u = (e - s) / max(float(np.hypot(*(e - s))), 1e-9)
+    both = any(tuple(paths[path][1]) == tuple(s2) and tuple(paths[path][0]) == tuple(e2) for s2, e2 in paths.values())
+    off = POPUP_LANE_M * np.array([-u[1], u[0]]) if both else np.zeros(2)
+    return s + off, e + off
+
+
+# A path drawn as an arrow from its start to its end, inset metres in from both ends (line A's arrow as before).
+def path_arrow(start, end, inset: float = 0.3) -> tuple:
+    a, b = np.asarray(start, float), np.asarray(end, float)
+    u = (b - a) / max(float(np.hypot(*(b - a))), 1e-9)
+    return tuple(a + inset * u), tuple(b - inset * u)
 
 
 # The direction on the boards for a layout: at the identification spot as before (direction_mode...
@@ -694,7 +754,11 @@ class EngineScreen:
         for g in np.arange(0, 5.001, 1.0):
             ax.axhline(g, color="0.93", lw=0.6)
             ax.axvline(g, color="0.93", lw=0.6)
-        ax.plot([2.5, 2.5], [0, 5], color="0.8", lw=4)
+        if st.get("popup"):
+            for a_, b_ in {tuple(sorted(se)) for se in screen_paths().values()}:
+                ax.plot([a_[0], b_[0]], [a_[1], b_[1]], color="0.88", lw=2.5)
+        else:
+            ax.plot([2.5, 2.5], [0, 5], color="0.8", lw=4)
         rx2 = tuple(EN._rigs()[getattr(self, "layout", "id_spot")]["RX2"])
         for nm, (x, y) in {"TX": (2.5, -0.5), "RX1": (2.5, 5.5), "RX2": rx2, "RX3": (5.5, 2.5)}.items():
             ax.plot(x, y, "^", color="tab:purple", ms=8)
@@ -715,11 +779,23 @@ class EngineScreen:
             lines.append(f"correct {k_} of {n_} ({100 * k_ / n_:.1f} %), chance 16.7 %")
         if st["open"]:
             lines.append("listening: walk in progress")
+        nxt = st.get("next_path") if st.get("popup") else None
+        if nxt:
+            s_, e_ = path_arrow(*lane_of(nxt, screen_paths()))
+            ax.annotate("", xy=e_, xytext=s_, arrowprops={"arrowstyle": "-|>", "color": "tab:blue", "lw": 2, "ls": "--"})
+            ax.set_xlabel(f"next walk: {nxt}" if st.get("map_open", True) else f"this walk: {nxt} (picked on the map)",
+                          fontsize=10, color="tab:blue", weight="bold")
         if d is None:
             bx.axis("off")
             cx.axis("off")
-            bx.text(0, 0.8, "press SPACE when the walker starts on line A" if st.get("dmode", "detected") == "detected" else
-                    "press a (away from the TX) or t (towards it)\nwhen the walker starts on line A", fontsize=12)
+            if st.get("popup"):
+                msg = ("pick the walk's path on the map window (one click),\nthen press SPACE in the Terminal as the walker "
+                       "starts\n(a / t: line A, away from / towards the TX)")
+            elif st.get("dmode", "detected") == "detected":
+                msg = "press SPACE when the walker starts on line A"
+            else:
+                msg = "press a (away from the TX) or t (towards it)\nwhen the walker starts on line A"
+            bx.text(0, 0.8, msg, fontsize=12)
             tx.text(0, 1, "\n".join(lines), va="top", fontsize=9)
             self._show()
             return
@@ -728,6 +804,9 @@ class EngineScreen:
         if x["path"] in ("A_fwd", "A_rev"):
             y0, y1 = (0.3, 4.7) if x["path"] == "A_fwd" else (4.7, 0.3)
             ax.annotate("", xy=(2.5, y1), xytext=(2.5, y0), arrowprops={"arrowstyle": "-|>", "color": "tab:green", "lw": 3})
+        elif x["path"] in screen_paths():
+            s_, e_ = path_arrow(*screen_paths()[x["path"]])
+            ax.annotate("", xy=e_, xytext=s_, arrowprops={"arrowstyle": "-|>", "color": "tab:green", "lw": 3})
         ax.set_title(f"direction: {way} ({d['info'].get('direction_source', 'detected')})", fontsize=10)
         conf = d["confidence"]
         k = int(np.argmax(d["ensemble"]))
@@ -758,9 +837,10 @@ class EngineScreen:
                  f"latency: {d['latency_s']:.2f} s after the {d['T']:.0f} s window"] + lines
         tx.text(0, 1, "\n".join(lines), va="top", fontsize=9)
         if d.get("engine_version", 4) >= 5:
+            n = len(d.get("components") or {})
             self.caption.set_text("One press when the walker starts. The answer comes from three 4 s windows of Wi-Fi signal (0, "
-                                  "0.15 and 0.30 s after the press): gait features and Doppler maps, nine models summed and the "
-                                  "windows averaged. Displayed confidence is their geometric mean.")
+                                  f"0.15 and 0.30 s after the press): gait features and Doppler maps, {NUMBER_WORDS.get(n, n)} models "
+                                  "summed and the windows averaged. Displayed confidence is their geometric mean.")
         else:
             self.caption.set_text("One press when the walker starts. The answer comes from 3 s of Wi-Fi signal: gait features and "
                                   "Doppler maps, eight models summed. Displayed confidence is their geometric mean.")
@@ -781,6 +861,167 @@ class EngineScreen:
     # Function save.
     def save(self, path: str) -> None:
         self.fig.savefig(path, dpi=110)
+
+
+# The path pop-up: a map of the taped grid with the twelve tracking paths as arrows, start to end, read from...
+class PathPopup:
+
+    # Sets up the object.
+    def __init__(self, headless: bool = False, paths: dict = None, focus_back: bool = None, clock=None):
+        import matplotlib
+        if headless:
+            matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        self.plt, self.headless = plt, headless
+        self.paths = dict(paths or screen_paths())
+        self.clock = clock or time.monotonic
+        self.focus_back = (not headless) if focus_back is None else bool(focus_back)
+        self.history = []
+        self.locked = False
+        self.ignored = 0
+        self.lanes = self._lanes()
+        self.fig = plt.figure(figsize=(5.6, 6.4))
+        if not headless and self.fig.canvas.manager:
+            self.fig.canvas.manager.set_window_title("identification: click the next walk's path, then SPACE in the Terminal")
+        self.ax = self.fig.add_axes([0.03, 0.03, 0.94, 0.82])
+        self.title = self.fig.text(0.04, 0.95, "", fontsize=12, weight="bold")
+        self.sub = self.fig.text(0.04, 0.905, "seen from above, the TX at the bottom; one click picks line and direction",
+                                 fontsize=9, color="0.3")
+        self.art = {}
+        self._build()
+        self._restyle()
+        self.fig.canvas.mpl_connect("button_press_event", self._click)
+        if not headless:
+            plt.show(block=False)
+            self._draw()
+
+    # {path: (start, end)} as drawn (lane_of): a line's two directions side by side.
+    def _lanes(self) -> dict:
+        return {nm: lane_of(nm, self.paths) for nm in self.paths}
+
+    # Function build.
+    def _build(self) -> None:
+        from matplotlib.patches import FancyArrowPatch
+        ax = self.ax
+        for g in np.arange(0, 5.001, 1.0):
+            ax.axhline(g, color="0.93", lw=0.6, zorder=0)
+            ax.axvline(g, color="0.93", lw=0.6, zorder=0)
+        for nm, (a, b) in self.lanes.items():
+            s, e = path_arrow(a, b, inset=0.15)
+            arr = FancyArrowPatch(s, e, arrowstyle="-|>", mutation_scale=16, lw=1.6, color="0.6", zorder=2)
+            ax.add_patch(arr)
+            u = (np.asarray(e) - np.asarray(s)) / max(float(np.hypot(*(np.asarray(e) - np.asarray(s)))), 1e-9)
+            lab = ax.text(*(np.asarray(a) - 0.34 * u), nm, ha="center", va="center", fontsize=8, color="0.35", zorder=3)
+            self.art[nm] = (arr, lab)
+        ax.set_xlim(-1.0, 6.0)
+        ax.set_ylim(-1.0, 6.0)
+        ax.set_aspect("equal")
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    # Function chosen.
+    @property
+    def chosen(self):
+        return self.history[-1][1] if self.history else None
+
+    # The path picked last at or before t (a key's time), or None.
+    def path_at(self, t: float):
+        for tp, nm in reversed(self.history):
+            if tp <= float(t):
+                return nm
+        return None
+
+    # The path drawn nearest to the point (x, y) on the grid, within POPUP_PICK_M, or None.
+    def pick(self, x: float, y: float):
+        p = np.array([x, y], float)
+        best, dist = None, POPUP_PICK_M
+        for nm, (a, b) in self.lanes.items():
+            ab = b - a
+            q = a + np.clip(float(np.dot(p - a, ab) / max(float(np.dot(ab, ab)), 1e-12)), 0.0, 1.0) * ab
+            d_ = float(np.hypot(*(p - q)))
+            if d_ <= dist:
+                best, dist = nm, d_
+        return best
+
+    # A point on the path's own arrow, a quarter of the way along (where a click picks it and no other).
+    def pick_point(self, path: str) -> tuple:
+        a, b = self.lanes[path]
+        return tuple(a + 0.25 * (b - a))
+
+    # Function click.
+    def _click(self, ev) -> None:
+        if ev.inaxes is not self.ax or ev.xdata is None:
+            return
+        nm = self.pick(ev.xdata, ev.ydata)
+        if nm is not None:
+            self.choose(nm)
+
+    # A pick (the click's callback): refused while a walk is open; else recorded on the keys' clock and shown.
+    def choose(self, path: str, t: float = None) -> bool:
+        if path not in self.paths:
+            raise ValueError(f"{path!r} is not one of the tracking paths {sorted(self.paths)}")
+        if self.locked:
+            self.ignored += 1
+            print("IDENTIFICATION: a walk is in progress; the map opens again after its decision", flush=True)
+            return False
+        self.history.append((float(self.clock() if t is None else t), path))
+        self._restyle()
+        self._draw()
+        print(f"IDENTIFICATION: next walk {path}. Press SPACE in the Terminal as the walker starts.", flush=True)
+        if self.focus_back:
+            self._focus_terminal()
+        return True
+
+    # An a / t press: its line-A path becomes the one picked (the next SPACE repeats it).
+    def preselect(self, path: str, t: float) -> None:
+        self.history.append((float(t), path))
+
+    # A press: the map takes no pick until no walk is open.
+    def lock(self) -> None:
+        self.locked = True
+
+    # No walk open any more: the map opens again, the last path still picked.
+    def reopen(self) -> None:
+        self.locked = False
+        self._restyle()
+        self._draw()
+
+    # Function restyle.
+    def _restyle(self) -> None:
+        for nm, (arr, lab) in self.art.items():
+            on = nm == self.chosen
+            arr.set_color("tab:green" if on else "0.6")
+            arr.set_linewidth(3.4 if on else 1.6)
+            arr.set_zorder(4 if on else 2)
+            lab.set_color("tab:green" if on else "0.35")
+            lab.set_fontweight("bold" if on else "normal")
+        self.title.set_text("walk in progress: the map opens again after its decision" if self.locked else
+                            (f"next walk: {self.chosen}   (SPACE in the Terminal starts it)" if self.chosen else
+                             "click the next walk's path"))
+
+    # Function draw.
+    def _draw(self) -> None:
+        if not self.headless:
+            self.fig.canvas.draw_idle()
+
+    # Function pump.
+    def pump(self) -> None:
+        if not self.headless:
+            self.fig.canvas.flush_events()
+
+    # Function save.
+    def save(self, path: str) -> None:
+        self.fig.savefig(path, dpi=110)
+
+    # Give the keyboard back to the Terminal the app runs in, so SPACE reaches the key reader (macOS; not waited...
+    @staticmethod
+    def _focus_terminal() -> None:
+        import subprocess
+        import sys
+        app = {"Apple_Terminal": "Terminal", "iTerm.app": "iTerm", "vscode": "Visual Studio Code"}.get(
+            os.environ.get("TERM_PROGRAM", ""))
+        if sys.platform == "darwin" and app:
+            subprocess.Popen(["open", "-a", app], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 
@@ -808,6 +1049,8 @@ class EngineConsumer:
         self.last_t = {}
         self.keys_held = []
         self.silent = set()
+        self.popup = None
+        self.refused = 0
 
     # Function handle.
     def handle(self, rec) -> None:
@@ -885,6 +1128,7 @@ class EngineConsumer:
     # Function end stream.
     def end_stream(self) -> None:
         self._after(self.finish(), np.inf)
+        self._popup_tick()
 
     # The held keys up to upto, in time order (data-time order: see the class docstring).
     def _keys(self, upto: float = np.inf) -> None:
@@ -896,27 +1140,52 @@ class EngineConsumer:
                 route = self.routes.get(float(ev.t_mono))
                 if route is not None:
                     self.app.press(ev.t_mono, path=route, source="known route")
+                elif self.popup is not None:
+                    path = self.popup.path_at(float(ev.t_mono))
+                    if path is None:
+                        self.refused += 1
+                        print(POPUP_REFUSED, flush=True)
+                    else:
+                        self.app.press(ev.t_mono, path=path, source=POPUP_SOURCE)
+                        self.popup.lock()
                 elif self.app.dmode == "detected":
                     self.app.press(ev.t_mono)
                 else:
-                    self.refused = getattr(self, "refused", 0) + 1
+                    self.refused += 1
                     print(SPACE_REFUSED, flush=True)
             elif ev.key in ("a", "t"):
-                self.app.press(ev.t_mono, path="A_fwd" if ev.key == "a" else "A_rev", source="key")
+                path = "A_fwd" if ev.key == "a" else "A_rev"
+                self.app.press(ev.t_mono, path=path, source="key")
+                if self.popup is not None:
+                    self.popup.preselect(path, float(ev.t_mono))
+                    self.popup.lock()
             elif ev.key == "n":
                 self.app.new_walker()
+
+    # The path pop-up opens again once no walk is open (the last decision is out), the last path still picked.
+    def _popup_tick(self) -> None:
+        p = self.popup
+        if p is not None and p.locked and not getattr(getattr(self.app, "e", None), "open_windows", 0):
+            p.reopen()
 
     # Engine v5: what the screen shows, beyond the clock: the last decision, the walks seen, whether a walk is...
     def _seen(self, st: dict) -> tuple:
         return (None if st["last"] is None else st["last"]["t0"], st["walks_seen"], bool(st["open"]), tuple(st["score"]),
-                st["stream"])
+                st["stream"], st.get("next_path"), st.get("map_open"))
+
+    # The app's state for the screen, with the path pop-up's pick and whether its map is open.
+    def _state(self) -> dict:
+        st = self.app.state()
+        if self.popup is not None:
+            st.update(popup=True, next_path=self.popup.chosen, map_open=not self.popup.locked)
+        return st
 
     # Function after.
     def _after(self, got: list, now: float) -> None:
         if self.screen is None or not self.display:
             return
         if getattr(self.app, "v5", False):
-            st = self.app.state()
+            st = self._state()
             seen = self._seen(st)
             if got or seen != self.shown:
                 self.shown, self.last_draw = seen, now
@@ -928,10 +1197,14 @@ class EngineConsumer:
             elif now - self.last_draw >= 0.1:
                 self.last_draw = now
                 self.screen.pump()
+                if self.popup is not None:
+                    self.popup.pump()
             return
         if got or now - self.last_draw >= 0.1:
             self.last_draw = now
-            self.screen.draw(self.app.state(), now)
+            self.screen.draw(self._state(), now)
+            if self.popup is not None:
+                self.popup.pump()
             if got and self.snapshots:
                 os.makedirs(self.snapshots, exist_ok=True)
                 self.screen.save(os.path.join(self.snapshots, f"identify_{self.shots:04d}.png"))
@@ -940,6 +1213,7 @@ class EngineConsumer:
     # Now is the stream's time: run_capture passes the host's time.monotonic() (the clock of t_mono and of the...
     def tick(self, now: float) -> None:
         self._after(self._release(self._horizon(now), now), now)
+        self._popup_tick()
         self._announce(now)
 
     # The silent-receiver guard's messages: a receiver with no frame for over SILENT_S (rig.silent_receivers: in...
@@ -1032,6 +1306,9 @@ def cmd_rig(a) -> int:
     layout = getattr(a, "layout", None) or "home"
     if layout not in RIG_LAYOUTS:
         raise SystemExit(f"REFUSED: --layout {layout!r}: home (RX2 where tracking has it) or id_spot (the geometry test)")
+    popup = bool(getattr(a, "popup", False))
+    if popup and layout != "home":
+        raise SystemExit("REFUSED: --popup is for the home layout; at the identification spot SPACE uses the direction detector")
     os.chdir(REPO_ROOT)
     from pipeline.live.final_model import RigSteps, rig_banner
     steps = RigSteps(4)
@@ -1041,7 +1318,8 @@ def cmd_rig(a) -> int:
     rx2 = tuple(EN._rigs()[layout]["RX2"])
     steps.step(f"Loading the identification model {man['model']} on the {'GPU' if dev == 'mps' else 'CPU'}; layout {layout}: "
                f"RX2 at {rx2}{' (the tracking rig)' if layout == 'home' else ' (the geometry test)'}; direction: "
-               f"{'SPACE (the detector)' if dmode == 'detected' else 'the a / t keys (SPACE is refused here)'}")
+               + ("each walk's path picked on the map (the path pop-up), then SPACE" if popup else
+                  'SPACE (the detector)' if dmode == 'detected' else 'the a / t keys (SPACE is refused here)'))
     eng = EN.Engine(md, T=man["T_s"], amp_norm=man["gs_adopted"], layout=layout, device=dev, room=a.room)
     stem = time.strftime("rig_%Y%m%d_%H%M%S")
     steps.step("Starting and warming the extraction workers")
@@ -1053,17 +1331,22 @@ def cmd_rig(a) -> int:
     nodes = mapping_by_mac(identify(), room_a_macs(os.path.join(REPO_ROOT, "data")))
     nodes = {k: v for k, v in nodes.items() if k in ("RX1", "RX2", "RX3")}
     steps.done(", ".join(f"{k} on {v}" for k, v in sorted(nodes.items())))
-    steps.step("Opening the identification window")
+    steps.step("Opening the identification window" + (" and the path map" if popup else ""))
     c = EngineConsumer(app, EngineScreen(headless=False, layout=layout))
+    if popup:
+        c.popup = PathPopup(headless=False, focus_back=not getattr(a, "no_focus_return", False))
     steps.done()
     rig_banner(["READY.",
                 "Click on THIS Terminal window: the keys are read here, not in the plot window.",
-                ("SPACE once as each walker starts; n = a new walker; a / t = the route (away / towards); q quits."
+                ("Before each walk, click its path on the map window (one click: line and direction); then SPACE here as "
+                 "the walker starts. The map opens again after each decision with the last path picked, so a repeat is one "
+                 "SPACE. a / t = line A (away from / towards the TX); n = a new walker; q quits." if popup else
+                 "SPACE once as each walker starts; n = a new walker; a / t = the route (away / towards); q quits."
                  if dmode == "detected" else
                  "a (away from the TX) or t (towards it) once as each walker starts on line A; n = a new walker; q quits."),
                 "Keep the plot window visible during a walk (a hidden window can be slowed by macOS)."])
     rc = run(c, nodes, duration=a.minutes * 60.0 if a.minutes else None, mode="identify", stem=stem,
-             run_config={"model": man["model"], "room": a.room, "layout": layout, "direction_mode": dmode,
+             run_config={"model": man["model"], "room": a.room, "layout": layout, "direction_mode": dmode, "path_popup": popup,
                          "device": str(getattr(eng.model, "device", None)),
                          "extract_mode": getattr(a, "extract_mode", None) or EXTRACT_MODE_V5,
                          "extract_workers": getattr(a, "extract_workers", None), "jsonl": app.jsonl})
@@ -1072,6 +1355,8 @@ def cmd_rig(a) -> int:
     if rec:
         with open(os.path.join(rec, f"{stem}.summary.json"), "w", encoding="utf-8") as f:
             json.dump({"model": man["model"], "room": a.room, "layout": layout, "rx2": list(rx2), "direction_mode": dmode,
+                       "path_popup": popup, "popup_picks": (c.popup.history if popup else None),
+                       "popup_clicks_ignored_during_a_walk": (c.popup.ignored if popup else None),
                        "space_refused": int(getattr(c, "refused", 0)), "device": str(getattr(eng.model, "device", None)),
                        "decisions": len(app.decisions), "jsonl": app.jsonl, "exit": rc,
                        "settles": list(getattr(eng.session, "settles", []) or []),
@@ -1195,6 +1480,11 @@ def main(argv=None) -> int:
     k.add_argument("--layout", default="home", choices=RIG_LAYOUTS,
                    help="home (default): RX2 where tracking has it, (-0.5, 2.5); id_spot: RX2 beside the TX at (2.0, -0.5), "
                         "the geometry test only (--source serial; a recorded stream takes each recording's own layout)")
+    k.add_argument("--popup", action="store_true",
+                   help="home layout: pick each walk's path on a pop-up map of the twelve paths, then SPACE starts it "
+                        "(`python3 -m pipeline.live app` turns this on); without it the keys are as before")
+    k.add_argument("--no-focus-return", action="store_true",
+                   help="with --popup: do not give the keyboard back to the Terminal after a click on the map")
     k.add_argument("--room", default=None, choices=("A", "B", "new"),
                    help="REQUIRED on the boards (engine v5): the installation's room, A, B, or new (a room the deployment "
                         "model never trained in); a recorded stream takes it from its session")

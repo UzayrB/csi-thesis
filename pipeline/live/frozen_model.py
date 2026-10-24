@@ -251,8 +251,13 @@ def identify(argv: list) -> int:
 def main(argv=None) -> int:
     import argparse
     import sys
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] == ["app"]:
+        from pipeline.live.app import main as amain
+        return amain(argv[1:], build="public")
     ap = argparse.ArgumentParser(prog="python3 -m pipeline.live.frozen_model")
     sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("app", help="THE LIVE APP: a start dialog, tracking or identification (pipeline/live/app.py)", add_help=False)
     sub.add_parser("ports", help="the receivers' ports by MAC, as RX1=<port>,RX2=<port>,RX3=<port> (for the baseline)")
     p = sub.add_parser("preflight", help="the checks before a board run (opens no port)")
     p.add_argument("--baseline", default=None)
@@ -266,6 +271,9 @@ def main(argv=None) -> int:
                    help="home (default): RX2 where tracking has it; id_spot: RX2 beside the TX, the geometry test only")
     i.add_argument("--minutes", type=float, default=None)
     i.add_argument("--device", default=None, choices=("cpu", "mps"))
+    i.add_argument("--popup", action="store_true", help="home: pick each walk's path on a pop-up map of the twelve paths")
+    i.add_argument("--no-focus-return", action="store_true",
+                   help="with --popup: do not give the keyboard back to the Terminal after a click")
     a = ap.parse_args(argv)
     if a.cmd == "ports":
         from pipeline.live.rig_run import identify as find_boards, mapping_by_mac
@@ -282,7 +290,8 @@ def main(argv=None) -> int:
             raise SystemExit("REFUSED: --baseline <dir> is required: this session's own 60 s empty-room capture")
         return rig(a.baseline, a.minutes, a.mode)
     extra = ["--room", a.room, "--layout", a.layout] + (["--minutes", str(a.minutes)] if a.minutes else []) \
-        + (["--device", a.device] if a.device else [])
+        + (["--device", a.device] if a.device else []) + (["--popup"] if a.popup else []) \
+        + (["--no-focus-return"] if a.no_focus_return else [])
     sys.exit(identify(extra))
 
 

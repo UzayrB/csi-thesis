@@ -1,5 +1,5 @@
 {
- "model": "deploy_all5_v5",
+ "model": "deploy_all5_v5s",
  "engine_version": 5,
  "T_s": 4.0,
  "alpha": 0.5,
@@ -46,7 +46,7 @@
    "identification": 1.0
   }
  },
- "derived_from": "deploy_all5_v4",
+ "derived_from": "deploy_all5_v5",
  "cnn_sha256": {
   "cnn3_norm.pkl": "261e48a4692c65861ccba876a5d52a83bba114d543bbe957b24a8bf9ec3c9152",
   "cnn_link0_norm.pkl": "caa087ae96d7995485538583104efb582acbf7bcaedbae66f29d5dd8cd7a5706",
@@ -79,10 +79,36 @@
  "code_commit_at_training": "798b08f6baf710dccf2771c6902c29d3368d40ad",
  "plan": "runs/identify/v5/QUEUE_V5.md (Uzayr's brief)",
  "configuration_source": "runs/identify/roomA/stores/split_A3.npz (the Room A run's A3-half choice)",
- "use": "the rig's deployment model; never scores anything",
+ "use": "the rig's deployment model, engine v5s: deploy_all5_v5 with five of its nine components (lda_pace_prior, hgb_pace_prior, cnn, cnn_prior, cnn_perlink_prior); the four forests (rf, rf_prior, rf_pace_prior, et_pace_prior) are removed and never loaded; hgb_pace_prior's standardiser, rf_pace_prior's Prior state, is read from state_rf_pace_prior.pkl; never scores anything",
  "label": "development evaluation, all data seen",
- "built": "2026-10-10T18:33:01",
+ "built": "2026-10-24T09:54:48",
  "seconds_training": 215.7,
  "gs_adopted": false,
- "manifest_note": "2026-10-10 19:57:06: gs_adopted added from deploy_all5_v4's manifest (the live app's deployment check requires it; found by step 6's smoke test); nothing else changed"
+ "manifest_note": "2026-10-10 19:57:06: gs_adopted added from deploy_all5_v4's manifest (the live app's deployment check requires it; found by step 6's smoke test); nothing else changed",
+ "v5s": {
+  "members": [
+   "lda_pace_prior",
+   "hgb_pace_prior",
+   "cnn",
+   "cnn_prior",
+   "cnn_perlink_prior"
+  ],
+  "removed": [
+   "rf",
+   "rf_prior",
+   "rf_pace_prior",
+   "et_pace_prior"
+  ],
+  "derived_from": "deploy_all5_v5",
+  "state_files": {
+   "rf_pace_prior": "state_rf_pace_prior.pkl"
+  },
+  "feat_sha256": {
+   "feat_lda_pace_prior.pkl": "bf69961ed1a753e2ca3ff7167ce8037a71fa0775337634f6e60fb1017b55762c",
+   "feat_hgb_pace_prior.pkl": "8d7835d96dd04e9134a1599a2e3c450b74ae3bdae749706adf8563f13d51d7f3"
+  },
+  "state_sha256": {
+   "state_rf_pace_prior.pkl": "30ff20b815f55ca97e8f3e9b8a836229db8bdd3642bfde0351bf60d59f2ff656"
+  }
+ }
 }

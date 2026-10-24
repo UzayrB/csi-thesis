@@ -36,6 +36,9 @@ DEV_NAMES = os.path.join("runs", "identify", "dev", "bank", "feature_names.json"
 
 
 
+
+V5S_CNN_TAGS = {"cnn": ("cnn3",), "cnn_prior": ("cnn3",), "cnn_perlink_prior": ("cnn_link0", "cnn_link1", "cnn_link2")}
+
 ENGINE_VERSION = 4
 SUFFIX = "_v4"
 DIR_T_S = 3.0
@@ -440,6 +443,13 @@ class Model:
     def __init__(self, model_dir: str, device: str = "cpu", names: list = None):
         from pipeline.identify import idw_core as W
         from pipeline.identify import idz_core as Z
+        man_p = os.path.join(model_dir, "manifest.json")
+        man = json.load(open(man_p)) if os.path.exists(man_p) else {}
+        if man.get("v5s"):
+            self._init_v5s(model_dir, device, names, man)
+            return
+        self.v5s = None
+        self.states = {}
         self.dir, self.device = model_dir, device
         meta_p = os.path.join(model_dir, "meta_feat_cnn.json")
         self.meta = json.load(open(meta_p))
@@ -474,6 +484,53 @@ class Model:
             self.components = self.feat_components + self.cnn_components
             self.pace = tuple(Z.PACE_COMPONENTS) + tuple(c for c in self.extra_feat
                                                          if W.FEAT[self.feat[c]["state_of"]][2])
+
+    # Engine v5s: the model with only the members its manifest names; no other component's file is opened.
+    def _init_v5s(self, model_dir: str, device: str, names: list, man: dict) -> None:
+        from pipeline.identify import idw_core as W
+        from pipeline.identify import idz_core as Z
+        self.dir, self.device = model_dir, device
+        self.meta = json.load(open(os.path.join(model_dir, "meta_feat_cnn.json")))
+        self.cfg = self.meta["cfg"]
+        assert not self.cfg.get("layout") and not self.cfg.get("fn") and self.cfg.get("cols", "v2") == "v2", self.cfg
+        self.names = names if names is not None else json.load(open(DEV_NAMES))
+        self.cols = v2_columns(self.names)
+        self.manifest = man
+        self.version = int(man.get("engine_version", ENGINE_VERSION))
+        assert self.version >= 5, "engine v5s needs an engine v5 model"
+        v5, spec = man["v5"], man["v5s"]
+        mem = tuple(spec["members"])
+        all_feat = tuple(W.FEAT) + tuple(v5["extra_feature_components"])
+        all_cnn = tuple(c for c in Z.COMPONENTS if c not in W.FEAT)
+        assert set(mem) <= set(all_feat + all_cnn) and len(set(mem)) == len(mem), mem
+        self.v5s = spec
+        self.feat = {c: pickle.load(open(os.path.join(model_dir, f"feat_{c}.pkl"), "rb")) for c in all_feat if c in mem}
+        self.extra_feat = tuple(c for c in v5["extra_feature_components"] if c in mem)
+        self.states = {}
+        for c in self.extra_feat:
+            base = self.feat[c]["state_of"]
+            if base not in self.feat:
+                self.states[base] = pickle.load(open(os.path.join(model_dir, spec["state_files"][base]), "rb"))["state"]
+        self.offsets = tuple(float(o) for o in v5["offsets"])
+        self.room_weights = v5["room_weights"]
+        self.rooms = sorted({str(x)[0] for x in man["training_sessions"]})
+        self.cnn_tags = tuple(t for t in ("cnn3", "cnn_link0", "cnn_link1", "cnn_link2")
+                              if any(t in V5S_CNN_TAGS[c] for c in mem if c in V5S_CNN_TAGS))
+        self.nets, self.norm = {}, {}
+        for tag in self.cnn_tags:
+            self.norm[tag] = pickle.load(open(os.path.join(model_dir, f"{tag}_norm.pkl"), "rb"))
+            for s in self.meta["seeds"]:
+                self.nets[(tag, s)] = W._load_net(os.path.join(model_dir, f"{tag}_seed{s}.pt"),
+                                                  3 if tag == "cnn3" else 1).to(device)
+        self.feat_components = tuple(c for c in all_feat if c in mem)
+        self.cnn_components = tuple(c for c in all_cnn if c in mem)
+        self.components = self.feat_components + self.cnn_components
+        self.pace = tuple(c for c in Z.PACE_COMPONENTS if c in mem) + tuple(
+            c for c in self.extra_feat if W.FEAT[self.feat[c]["state_of"]][2])
+
+    # A feature component's standardiser: its own, or the shared one read from its state file (engine v5s).
+    def state(self, base: str):
+        return self.feat[base]["state"] if base in self.feat else self.states[base]
 
     # Engine v5's feature weight a for a window: the trained-room weight on a tracking walk (layout home) in a...
     def weight(self, room: str, layout: str) -> float:
@@ -544,8 +601,10 @@ class Session:
         Xw, dw, pw = np.concatenate(Xs), np.concatenate(ds).astype(int), np.concatenate(ps).astype(int)
         return Z.apply_norm_keyed(Xw, dw, None, nd["st"]), dw, pw
 
-    # The eight components' normalised log-probabilities for one window, and the ensemble.
+    # The components' normalised log-probabilities for one window, and the ensemble.
     def classify(self, ex: dict) -> dict:
+        if getattr(self.m, "v5s", None):
+            return self._classify_v5s(ex)
         from pipeline.identify import idv2_core as C
         from pipeline.identify import idw_core as W
         from pipeline.identify import idx_loso as L
@@ -612,6 +671,64 @@ class Session:
                 "ensemble_nopace": C.normalise_logp(sum(comps[c] for c in comps if c not in m.pace)[None, :])[0],
                 "calib_n": n, "model_s": time.perf_counter() - c0}
 
+    # Engine v5s: classify over the model's members only, the same statements for each member.
+    def _classify_v5s(self, ex: dict) -> dict:
+        from pipeline.identify import idv2_core as C
+        from pipeline.identify import idw_core as W
+        from pipeline.identify import idx_loso as L
+        m = self.m
+        c0 = time.perf_counter()
+        self._route(ex)
+        g = ex["features"].astype(np.float64)[m.cols]
+        path = ex["path"]
+        out = {}
+        n = len(self.X)
+        for comp in m.feat_components:
+            d = m.feat[comp]
+            base = d.get("state_of", comp)
+            _head, norm, pace = W.FEAT[base]
+            st = m.state(base)
+            row = np.r_[g, ex["wifi_speed"]] if pace else g
+            if norm == "perpath":
+                Bm = st.transform(row[None, :], np.array([path]))
+            else:
+                if n:
+                    pool = np.c_[np.asarray(self.X), np.asarray(self.speed)] if pace else np.asarray(self.X)
+                    Xall = np.vstack([pool, row[None, :]])
+                    paths = np.array(self.paths + [path])
+                    calib = np.arange(n)
+                else:
+                    Xall, paths, calib = row[None, :], np.array([path]), None
+                Bm = st.apply(Xall, paths, np.array([len(Xall) - 1]), calib)
+            out[comp] = L._order(C.logp_from_proba(d["clf"].predict_proba(Bm)), d["classes"])[0]
+        Wn = C.windows(ex["maps"])
+        seeds = m.meta["seeds"]
+        for tag in m.cnn_tags:
+            Xw, dw, pw = self._cnn_input(tag, [Wn], [path])
+            plain, adapted = [], []
+            for s in seeds:
+                if tag == "cnn3" and "cnn" in m.cnn_components:
+                    plain.append(C.normalise_logp(C.pass_logp(m.nets[(tag, s)], Xw, dw, pw, 1, 6, m.device)))
+                if tag != "cnn3" or "cnn_prior" in m.cnn_components:
+                    net = self.adapted.get((tag, s), m.nets[(tag, s)])
+                    adapted.append(C.normalise_logp(C.pass_logp(net, Xw, dw, pw, 1, 6, m.device)))
+            if tag == "cnn3":
+                if plain:
+                    out["cnn"] = C.normalise_logp(np.mean(plain, axis=0))[0]
+                if adapted:
+                    out["cnn_prior"] = C.normalise_logp(np.mean(adapted, axis=0))[0]
+            else:
+                out[f"_{tag}"] = C.normalise_logp(np.mean(adapted, axis=0))[0]
+        if "cnn_perlink_prior" in m.cnn_components:
+            out["cnn_perlink_prior"] = C.normalise_logp(sum(out.pop(f"_cnn_link{c}") for c in range(3))[None, :])[0]
+        comps = {c: out[c] for c in m.components}
+        s = sum(comps.values())
+        ens = C.normalise_logp(s[None, :])[0]
+        conf = np.exp(s / len(comps) - (s / len(comps)).max())
+        return {"components": comps, "ensemble": ens, "confidence": conf / conf.sum(),
+                "ensemble_nopace": C.normalise_logp(sum(comps[c] for c in comps if c not in m.pace)[None, :])[0],
+                "calib_n": n, "model_s": time.perf_counter() - c0}
+
     # Engine v5: per window k, s_k = a x the feature components' sum + the CNN components' sum (summed in the...
     def combine(self, results: list, a: float) -> dict:
         from pipeline.identify import idv2_core as C
@@ -666,8 +783,21 @@ class Session:
 
     # Function adapt.
     def _adapt(self) -> None:
+        if getattr(self.m, "v5s", None):
+            self._adapt_v5s()
+            return
         from pipeline.identify import idv2_core as C
         for tag in ("cnn3", "cnn_link0", "cnn_link1", "cnn_link2"):
+            Xo, do, _p = self._cnn_input(tag, self.W, self.paths)
+            for s in self.m.meta["seeds"]:
+                self.adapted[(tag, s)] = C.adabn(self.m.nets[(tag, s)], Xo, do, self.m.device)
+
+    # Engine v5s: _adapt over the members' networks only (cnn3's adapted copies only when cnn_prior is a member).
+    def _adapt_v5s(self) -> None:
+        from pipeline.identify import idv2_core as C
+        for tag in self.m.cnn_tags:
+            if tag == "cnn3" and "cnn_prior" not in self.m.cnn_components:
+                continue
             Xo, do, _p = self._cnn_input(tag, self.W, self.paths)
             for s in self.m.meta["seeds"]:
                 self.adapted[(tag, s)] = C.adabn(self.m.nets[(tag, s)], Xo, do, self.m.device)

@@ -1,0 +1,137 @@
+{
+ "what": "the twelve tracking paths (start and end, metres on the taped grid) from the tracking sidecars' passes",
+ "paths": {
+  "A_fwd": [
+   [
+    2.5,
+    0.0
+   ],
+   [
+    2.5,
+    5.0
+   ]
+  ],
+  "A_rev": [
+   [
+    2.5,
+    5.0
+   ],
+   [
+    2.5,
+    0.0
+   ]
+  ],
+  "B_fwd": [
+   [
+    0.0,
+    2.5
+   ],
+   [
+    5.0,
+    2.5
+   ]
+  ],
+  "B_rev": [
+   [
+    5.0,
+    2.5
+   ],
+   [
+    0.0,
+    2.5
+   ]
+  ],
+  "C_fwd": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    5.0,
+    5.0
+   ]
+  ],
+  "C_rev": [
+   [
+    5.0,
+    5.0
+   ],
+   [
+    0.0,
+    0.0
+   ]
+  ],
+  "D_fwd": [
+   [
+    0.0,
+    5.0
+   ],
+   [
+    5.0,
+    0.0
+   ]
+  ],
+  "D_rev": [
+   [
+    5.0,
+    0.0
+   ],
+   [
+    0.0,
+    5.0
+   ]
+  ],
+  "E_col1": [
+   [
+    0.5,
+    0.0
+   ],
+   [
+    0.5,
+    5.0
+   ]
+  ],
+  "E_col5": [
+   [
+    4.5,
+    0.0
+   ],
+   [
+    4.5,
+    5.0
+   ]
+  ],
+  "E_row1": [
+   [
+    0.0,
+    0.5
+   ],
+   [
+    5.0,
+    0.5
+   ]
+  ],
+  "E_row5": [
+   [
+    0.0,
+    4.5
+   ],
+   [
+    5.0,
+    4.5
+   ]
+  ]
+ },
+ "sidecars": {
+  "n": 32,
+  "per_session": {
+   "session_01": 6,
+   "session_02": 6,
+   "session_03": 6,
+   "session_B1": 7,
+   "session_B2": 7
+  },
+  "sha256_of_paths_and_sha256s": "1da352763bf8d63f385339d23ce6bffccf4ee126881d4c5c20b387b97b29008c"
+ },
+ "written_by": "runs/live/one_app_2026-10-23/freeze_paths.py"
+}
