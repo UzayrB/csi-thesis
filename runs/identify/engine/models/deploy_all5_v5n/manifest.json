@@ -1,5 +1,5 @@
 {
- "model": "deploy_all5_v5s",
+ "model": "deploy_all5_v5n",
  "engine_version": 5,
  "T_s": 4.0,
  "alpha": 0.5,
@@ -46,7 +46,7 @@
    "identification": 1.0
   }
  },
- "derived_from": "deploy_all5_v5",
+ "derived_from": "deploy_all5_v5s",
  "cnn_sha256": {
   "cnn3_norm.pkl": "261e48a4692c65861ccba876a5d52a83bba114d543bbe957b24a8bf9ec3c9152",
   "cnn_link0_norm.pkl": "caa087ae96d7995485538583104efb582acbf7bcaedbae66f29d5dd8cd7a5706",
@@ -79,7 +79,7 @@
  "code_commit_at_training": "798b08f6baf710dccf2771c6902c29d3368d40ad",
  "plan": "runs/identify/v5/QUEUE_V5.md (Uzayr's brief)",
  "configuration_source": "runs/identify/roomA/stores/split_A3.npz (the Room A run's A3-half choice)",
- "use": "the rig's deployment model, engine v5s: deploy_all5_v5 with five of its nine components (lda_pace_prior, hgb_pace_prior, cnn, cnn_prior, cnn_perlink_prior); the four forests (rf, rf_prior, rf_pace_prior, et_pace_prior) are removed and never loaded; hgb_pace_prior's standardiser, rf_pace_prior's Prior state, is read from state_rf_pace_prior.pkl; never scores anything",
+ "use": "the rig's deployment model, engine v5n: engine v5s (five of v5's nine components: lda_pace_prior, hgb_pace_prior, cnn, cnn_prior, cnn_perlink_prior; the forests removed and never loaded) with H + N on its two feature members (107-bin receiver, the percentile crossing interpolated inside its bin, unpadded STFTs, each packet divided by its mean over the bins); the CNN members are v5s's; hgb_pace_prior's standardiser is read from state_rf_pace_prior.pkl; never scores anything",
  "label": "development evaluation, all data seen",
  "built": "2026-10-24T09:54:48",
  "seconds_training": 215.7,
@@ -104,11 +104,25 @@
    "rf_pace_prior": "state_rf_pace_prior.pkl"
   },
   "feat_sha256": {
-   "feat_lda_pace_prior.pkl": "bf69961ed1a753e2ca3ff7167ce8037a71fa0775337634f6e60fb1017b55762c",
-   "feat_hgb_pace_prior.pkl": "8d7835d96dd04e9134a1599a2e3c450b74ae3bdae749706adf8563f13d51d7f3"
+   "feat_lda_pace_prior.pkl": "ced29e8406f147376a2e59003fab4468402e698d3012348650bf6cafc6fa57ad",
+   "feat_hgb_pace_prior.pkl": "6001db3f78f0bba380d079d9a9ab3e87fb5e8975940734db1f196efd977c02dd"
   },
   "state_sha256": {
-   "state_rf_pace_prior.pkl": "30ff20b815f55ca97e8f3e9b8a836229db8bdd3642bfde0351bf60d59f2ff656"
+   "state_rf_pace_prior.pkl": "97779855ef080057f94b438722122c292f46d918af636280f4c23faa2c060bfb"
   }
+ },
+ "v5n": {
+  "what": "engine v5n = v5s with H + N on its two feature members (Queue 42's F1 + M0, adopted by Uzayr 24 Oct 19:05)",
+  "feature_sha256": {
+   "feat_lda_pace_prior.pkl": "ced29e8406f147376a2e59003fab4468402e698d3012348650bf6cafc6fa57ad",
+   "feat_hgb_pace_prior.pkl": "6001db3f78f0bba380d079d9a9ab3e87fb5e8975940734db1f196efd977c02dd",
+   "state_rf_pace_prior.pkl": "97779855ef080057f94b438722122c292f46d918af636280f4c23faa2c060bfb"
+  },
+  "conditioning": {
+   "feature_members": "H (107 bins, interpolated percentile crossing, unpadded STFTs, wavelength 0.12177 m) and N (each packet divided by its mean over the bins before interpolating)",
+   "cnn_members": "v5s's (raw amplitude, 103 bins)"
+  },
+  "built": "2026-10-24 19:18:20",
+  "derived_from": "deploy_all5_v5s"
  }
 }

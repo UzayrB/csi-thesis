@@ -42,7 +42,7 @@ NUMBER_WORDS = {5: "five", 8: "eight", 9: "nine"}
 # The deployment model's name: the newest engine's that is built (v5s deploy_all5_v5s, then v5...
 def deployment_model() -> str:
     from pipeline.identify import engine as EN
-    for name in ("deploy_all5_v5s", "deploy_all5_v5", EN.model_name("deploy_all5"), "deploy_all5_x"):
+    for name in ("deploy_all5_v5n", "deploy_all5_v5s", "deploy_all5_v5", EN.model_name("deploy_all5"), "deploy_all5_x"):
         if os.path.exists(os.path.join(model_dir(name), "manifest.json")):
             return name
     return "deploy_all5"
@@ -176,12 +176,8 @@ def _extract_worker_init(amp_norm: bool, names: list) -> None:
 def _extract_window_job(job: dict) -> tuple:
     from pipeline.identify import engine as EN
     s = time.time()
-    rx = {}
-    for L, (tm, lt, ep, amp, rssi) in job["rx"].items():
-        r = EN.Receiver()
-        r.tm, r.lt, r.ep, r.amp, r.rssi = tm, lt, ep, amp, rssi
-        rx[L] = r
-    e = EN.Extractor(job["T"], job["amp_norm"], job["layout"], job["names"], job["alpha"], rx=rx, cut=job["cut"])
+    e = _frozen_extractor(job)
+    rx = e.rx
     td = job["td"]
     _check_receivers(rx, float(job["w"]["t0"]), min(float(td), float(job["w"]["t0"]) + float(job["T"])))
     ex = e.extract_v4(job["w"], td, [rx[L].timed(td) for L in EN.LINKS])
@@ -222,12 +218,14 @@ def _check_receivers(rx: dict, t0: float, end: float) -> None:
 # An Extractor on a job's frozen copy of the receivers, as _extract_window_job builds it.
 def _frozen_extractor(job: dict):
     from pipeline.identify import engine as EN
+    v5n = bool(job.get("v5n"))
     rx = {}
     for L, (tm, lt, ep, amp, rssi) in job["rx"].items():
-        r = EN.Receiver()
+        r = EN.V5NReceiver() if v5n else EN.Receiver()
         r.tm, r.lt, r.ep, r.amp, r.rssi = tm, lt, ep, amp, rssi
         rx[L] = r
-    return EN.Extractor(job["T"], job["amp_norm"], job["layout"], job["names"], job["alpha"], rx=rx, cut=job["cut"])
+    X = EN.V5NExtractor if v5n else EN.Extractor
+    return X(job["T"], job["amp_norm"], job["layout"], job["names"], job["alpha"], rx=rx, cut=job["cut"])
 
 
 # The end detector's checkpoints, exactly as Extractor.extract_v4 makes them.
@@ -307,6 +305,8 @@ def _staged_extract_v4(e, w: dict, td: float, timed: list, early: dict, td_is_se
         d = EN.detect_end(series, e.alpha, upto=e.T)
         if d is not None:
             walk_end = min(t0 + d[0], end)
+    if isinstance(e, EN.V5NExtractor):
+        return e.window(w, timed, path, sm3, walk_end), how
     T_win = e.T if end == t0 + e.T else end - t0
     x = EN.extract_window(timed, t0, T_win, e.amp_norm, path, layout, e.names)
     if A is None:
@@ -414,19 +414,21 @@ class ExtractPool:
     def _dispatch(self, x):
         # Function extract v4.
         def extract_v4(w, td, _timed):
+            from pipeline.identify import engine as EN
             rx = {}
             for L, r in x.rx.items():
                 k = int(np.searchsorted(r.tm, td, side="right"))
                 rx[L] = tuple(a[:k].copy() for a in (r.tm, r.lt, r.ep, r.amp, r.rssi))
             job = {"T": x.T, "amp_norm": x.amp_norm, "layout": x.layout, "names": x.names, "alpha": x.alpha, "cut": x.cut,
-                   "w": dict(w), "td": float(td), "rx": rx}
+                   "w": dict(w), "td": float(td), "rx": rx, "v5n": isinstance(x, EN.V5NExtractor)}
             return PendingExtraction(self.pool.submit(_extract_window_job, job), time.time())
         return extract_v4
 
     # Function job.
     def _job(self, x, w: dict, rx: dict) -> dict:
+        from pipeline.identify import engine as EN
         return {"T": x.T, "amp_norm": x.amp_norm, "layout": x.layout, "names": x.names, "alpha": x.alpha, "cut": x.cut,
-                "w": dict(w), "rx": rx}
+                "w": dict(w), "rx": rx, "v5n": isinstance(x, EN.V5NExtractor)}
 
     # Staged: the window's late job at its decision time, with the early results that are done and final.
     def _late(self, x):
@@ -1252,7 +1254,7 @@ def guard(md: str, session: str) -> list:
 # The final engine's fold model that never saw session: the newest engine's that is built (v5, then v4, then...
 def final_model(session: str) -> str:
     from pipeline.identify import engine as EN
-    for name in (f"loso_{session}_v5", EN.model_name(f"loso_{session}"), f"loso_{session}_x"):
+    for name in (f"loso_{session}_v5n", f"loso_{session}_v5", EN.model_name(f"loso_{session}"), f"loso_{session}_x"):
         if os.path.exists(os.path.join(model_dir(name), "meta_feat_cnn.json")):
             return name
     return f"loso_{session}"

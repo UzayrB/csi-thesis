@@ -24,7 +24,7 @@ ESP32 receivers over USB
                   decoder.py, display.py -> pipeline/constrained (decoder.py, paths.py, switching.py);
                   screen.py draws it. Model: runs/public_model/tracking/f05_A3/
        identify   identify_frozen.py -> identify_engine.py -> pipeline/identify/engine.py; the path map
-                  (identify_engine.PathPopup) gives each walk's path. Model: runs/identify/engine/models/deploy_all5_v5s/
+                  (identify_engine.PathPopup) gives each walk's path. Model: runs/identify/engine/models/deploy_all5_v5n/
   -> outputs in runs/live/ (see the end of this README)
 ```
 
@@ -36,7 +36,7 @@ ESP32 receivers over USB
 | `pipeline/constrained/` | the tracker: the twelve lines, the networks, the decoder | `paths.py`, `nets.py`, `decoder.py` |
 | `pipeline/identify/` | the identification engine and its gait features | `engine.py`, `common.py` |
 | `runs/public_model/` | the frozen tracker, the receivers' MACs, the identification files' hashes | `tracking/f05_A3/meta.json`, `boards.json`, `identification_hashes.txt` |
-| `runs/identify/` | the identification model (every file in git) | `engine/models/deploy_all5_v5s/manifest.json` |
+| `runs/identify/` | the identification model (every file in git) | `engine/models/deploy_all5_v5n/manifest.json` |
 | `videos/` | the app's screens replayed on the recorded session B2 (PA1 to PA6) | `B2 Tracking walks/`, `B2 Identification walks/` |
 
 ## Requirements
@@ -130,10 +130,13 @@ detector covers line A only, and with RX2 at its tracking position it is right o
 419 with RX2 beside the transmitter), below its 95 % rule. Without `--popup`, only `a` and `t` (line A) start a walk. It
 runs on the Apple GPU.
 
-The identification model is engine v5s: engine v5 with five of its nine components (`lda_pace_prior`, `hgb_pace_prior`,
-`cnn`, `cnn_prior` and `cnn_perlink_prior`). The four forests (`rf`, `rf_prior`, `rf_pace_prior` and `et_pace_prior`)
-are removed and never loaded; `hgb_pace_prior` reads its standardiser, the one it shared with `rf_pace_prior`, from
-`state_rf_pace_prior.pkl`. The model's `manifest.json` names the five in its `v5s` field.
+The identification model is engine v5n. It has the five components of engine v5s (`lda_pace_prior`, `hgb_pace_prior`,
+`cnn`, `cnn_prior` and `cnn_perlink_prior`); the four forests of engine v5 are not shipped and never loaded. The two
+feature components read the receivers' 107 bins, and each packet is divided by its mean over the bins before the
+features are taken, and the Doppler contours' percentile crossing is interpolated inside its bin. The three
+CNN components are v5s's, on the raw amplitude. `hgb_pace_prior` reads its standardiser from `state_rf_pace_prior.pkl`.
+The model's `manifest.json` names the five components in its `v5s` field, and its `v5n` field selects the v5n feature
+path in `pipeline/identify/engine.py`.
 
 ## Where the outputs go
 
@@ -142,4 +145,4 @@ are removed and never loaded; `hgb_pace_prior` reads its standardiser, the one i
   identification decision.
 
 `videos/` holds the app's own screens replayed on the recorded B2 session (participants as PA1 to PA6); the two
-identification sets show the engine v5s model.
+identification sets show the engine v5n model.

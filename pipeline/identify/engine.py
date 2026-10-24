@@ -560,6 +560,276 @@ def v2_columns(names: list) -> np.ndarray:
     return _V2[key]
 
 
+
+
+from pipeline.identify import id19_bank as _IB
+from pipeline.identify import id19_featbank as _FB
+from pipeline.identify import idmax_features as _F
+from pipeline.identify import idz_bank as _ZB
+
+LAM11 = 299792458.0 / 2.462e9
+KEEP103 = np.asarray(_IB.KEEP)
+SC103 = np.asarray(_FB.SC)
+RAW103 = KEEP103[SC103]
+KEEP107 = np.array(sorted(set(KEEP103.tolist()) | {100, 101, 102, 103}))
+SC107 = np.array([i for i, k in enumerate(KEEP107) if k not in _FB.NULL_SC])
+RAW107 = KEEP107[SC107]
+IDX103 = np.array([int(np.flatnonzero(RAW107 == r)[0]) for r in RAW103])
+V5N_NAMES = json.load(open(DEV_NAMES))
+V5N_COLS = v2_columns(V5N_NAMES)
+V5N_V2 = [V5N_NAMES[k] for k in V5N_COLS]
+V5N_V2_INDEX = {n: i for i, n in enumerate(V5N_V2)}
+V5N_LIVE_FAMILIES = ("cad", "dop", "mod")
+
+
+
+# Conditioning.energy_percentile_contour with the crossing interpolated linearly inside its bin (bin j spans...
+def contour_interp(f: np.ndarray, mag: np.ndarray, pct: float) -> np.ndarray:
+    f = np.asarray(f, float)
+    df = float(f[1] - f[0])
+    assert np.allclose(np.diff(f), df), "contour_interp needs uniform bins"
+    m = np.asarray(mag, float) ** 2
+    tot = m.sum(axis=1)
+    c = np.cumsum(m, axis=1)
+    out = np.full(m.shape[0], np.nan)
+    ok = tot > 0
+    if ok.any():
+        thr = (pct / 100.0) * tot[ok]
+        cc, mm = c[ok], m[ok]
+        j = (cc >= thr[:, None]).argmax(axis=1)
+        r = np.arange(len(j))
+        prev = np.where(j > 0, cc[r, np.maximum(j - 1, 0)], 0.0)
+        frac = (thr - prev) / np.maximum(mm[r, j], 1e-300)
+        out[ok] = f[j] + (frac - 0.5) * df
+    return out
+
+
+# Id29_dc2_score.torso_hz with H2 and H3 (boundary None, padded False; the crossing interpolated).
+def torso_hz_h(a_link: np.ndarray, bmat: np.ndarray = None) -> float:
+    from scipy import signal
+    P = _F.reduce_link(np.asarray(a_link, float), "dop", "pca", n_pc=4, bmat=bmat)[1:]
+    f, _t, Z = signal.stft(P, fs=FS, nperseg=32, noverlap=24, nfft=64, axis=-1, boundary=None, padded=False)
+    mag = np.abs(Z).sum(axis=0).T
+    keep = (f >= 4.0) & (f <= 70.0)
+    c = contour_interp(f[keep], mag[:, keep], 50.0)
+    c = c[np.isfinite(c)]
+    return float(np.median(c)) if len(c) else float("nan")
+
+
+# Idmax_features.doppler_features with H2 and H3: the STFT unpadded and the four contours interpolated.
+def doppler_features_h(x: np.ndarray, fs: float = FS, win_s: float = 0.2, cadence_hz=None) -> dict:
+    from scipy import signal
+    x = np.atleast_2d(np.asarray(x, float))
+    n = int(round(win_s * fs))
+    if x.shape[1] < 4 * n:
+        return {}
+    f, t, Z = signal.stft(x, fs=fs, nperseg=n, noverlap=int(0.75 * n), axis=-1, nfft=max(n, 64), boundary=None, padded=False)
+    mag = np.abs(Z).sum(axis=0).T
+    keep = (f >= 4.0) & (f <= 0.95 * fs / 2)
+    f, mag = f[keep], mag[:, keep]
+    P = mag ** 2
+    tot = P.sum(axis=1)
+    ok = tot > 0
+    if ok.sum() < 8:
+        return {}
+    cont = {q: contour_interp(f, mag[ok], float(q)) for q in (25, 50, 75, 95)}
+    med50 = max(float(np.median(cont[50])), 1e-6)
+    out = {"leg_torso": float(np.median(cont[95]) / med50), "q25_torso": float(np.median(cont[25]) / med50),
+           "q75_torso": float(np.median(cont[75]) / med50)}
+    fr = 1.0 / max(np.median(np.diff(t)), 1e-9)
+    for q in (50, 95):
+        cq = cont[q] / med50
+        out[f"c{q}_cv"] = float(np.std(cq) / max(np.mean(cq), 1e-9))
+        r = _F._acf(cq)
+        lo, hi = int(0.3 * fr), min(int(2.2 * fr), len(r) - 1)
+        out[f"c{q}_periodicity"] = float(r[lo:hi].max()) if hi > lo else np.nan
+        if cadence_hz:
+            L = int(round(2.0 * fr / cadence_hz))
+            segs = [cq[s:s + L] for s in range(0, len(cq) - L + 1, L)] if L >= 4 else []
+            if len(segs) >= 2:
+                Pc = np.vstack([np.interp(np.linspace(0, 1, 16, endpoint=False), np.linspace(0, 1, len(s), endpoint=False), s)
+                                for s in segs]).mean(axis=0)
+                Pc = np.roll(Pc, -int(np.argmax(Pc)))
+                Pc = (Pc - Pc.mean()) / max(Pc.std(), 1e-9)
+                for i, v in enumerate(Pc):
+                    out[f"c{q}_cyc{i:02d}"] = float(v)
+    fr_u = f / med50
+    Pk = P[ok]
+    prof = np.asarray([Pk[:, (fr_u >= a) & (fr_u < a + 0.5)].mean() if ((fr_u >= a) & (fr_u < a + 0.5)).any() else 0.0
+                       for a in np.arange(0, 4.0, 0.5)])
+    prof = prof / max(prof.sum(), 1e-20)
+    for i, v in enumerate(prof):
+        out[f"uprof_{i}"] = float(v)
+    return out
+
+
+
+# Function normalise.
+def normalise(a: np.ndarray) -> np.ndarray:
+    a = np.asarray(a, np.float64)
+    return a / np.maximum(a.mean(axis=1, keepdims=True), 1e-9)
+
+
+# One receiver's 107-bin amplitude on grid: the bracketing frames, then N ('N') or not ('raw'), then linear...
+def resample(timed_link: tuple, grid: np.ndarray, mode: str) -> np.ndarray:
+    t, a, _r = timed_link
+    j0 = max(int(np.searchsorted(t, grid[0])) - 1, 0)
+    j1 = min(int(np.searchsorted(t, grid[-1])) + 1, len(t))
+    ts, a_ = t[j0:j1], np.asarray(a[j0:j1], np.float64)
+    if mode == "N":
+        a_ = normalise(a_)
+    return _IB._interp_cols(grid, ts, a_)
+
+
+# Function resample rssi.
+def resample_rssi(timed_link: tuple, grid: np.ndarray) -> np.ndarray:
+    t, _a, r = timed_link
+    j0 = max(int(np.searchsorted(t, grid[0])) - 1, 0)
+    j1 = min(int(np.searchsorted(t, grid[-1])) + 1, len(t))
+    return _IB._interp_cols(grid, t[j0:j1], np.asarray(r[j0:j1], np.float64))
+
+
+
+# The 630 v2 columns with only the live ones computed (the rest NaN), Queue 41's features_v statements for...
+def live_features(AN: np.ndarray, RL: np.ndarray) -> np.ndarray:
+    out, chans, bm = {}, {}, {}
+    with _cadence_v3():
+        for li, link in enumerate(LINKS):
+            bg_long = _F.bandpass(AN[li], "b08_35", axis=0)
+            bm[(li, "b08_35")] = bg_long
+            a_cut = AN[li]
+            chans[(link, "rms", "b08_35")] = _F.bandpass(np.sqrt(np.mean(bg_long ** 2, axis=1)), "b08_35")[None, :]
+            chans[(link, "pca", "b08_35")] = _F.reduce_link(a_cut, "b08_35", "pca", n_pc=6, bmat=bg_long)
+            bd_long = _F.bandpass(AN[li], "dop", axis=0)
+            bm[(li, "dop_long")] = bd_long
+            chans[(link, "pca", "dop")] = _F.reduce_link(a_cut, "dop", "pca", n_pc=6, bmat=bd_long)
+        live_ch = [(r, b) for r, b in _FB.CADENCE_CH if r != "mean"]
+        est = [_F.cadence_estimates(chans[(link, red, band)][0]) for link in LINKS for red, band in live_ch]
+        cad = _F.resolve_cadence(est)
+        c = cad["cadence_hz"]
+        out["cad|all|-|-|cadence_hz"] = c
+        out["cad|all|-|-|agree_frac"] = cad["agree_frac"]
+        per_link = []
+        for link in LINKS:
+            rl_ = _F.resolve_cadence([_F.cadence_estimates(chans[(link, red, band)][0]) for red, band in live_ch])
+            per_link.append(rl_["cadence_hz"])
+            out[f"cad|link|{link}|-|cadence_hz"] = rl_["cadence_hz"]
+        pl = [x for x in per_link if x]
+        out["cad|all|-|-|link_spread"] = float(np.ptp(pl)) if len(pl) > 1 else np.nan
+        for li, link in enumerate(LINKS):
+            for k, v in doppler_features_h(chans[(link, "pca", "dop")][1:], win_s=0.2, cadence_hz=c).items():
+                out[f"dop|pca-pc1@w0.2|{link}|-|{k}"] = v
+            lvl_r = max(float(np.asarray(AN[li], float).mean()), 1e-6)
+            d = _F.bandpass(np.sqrt(np.mean(bm[(li, "dop_long")] ** 2, axis=1)), "b08_35")
+            r = np.asarray(RL[li], float)
+            out[f"mod|-|{link}|-|moddepth_dop"] = float(np.std(d) / lvl_r)
+            out[f"mod|-|{link}|-|sub_dispersion"] = float(np.median(np.std(bm[(li, "b08_35")], axis=0)) / 1e-9)
+            out[f"mod|-|{link}|-|rssi_std"] = float(np.std(r - np.median(r)))
+    v = np.full(len(V5N_V2), np.nan)
+    for k, val in out.items():
+        i = V5N_V2_INDEX.get(k)
+        if i is not None:
+            v[i] = np.nan if val is None else val
+    v[~np.isfinite(v)] = np.nan
+    return v.astype(np.float32).astype(np.float64)
+
+
+# The live columns by family (the families the v5n path computes; moddepth_gait is dead).
+def live_columns() -> dict:
+    out = {}
+    for n in V5N_V2:
+        fam = n.split("|")[0]
+        if fam in V5N_LIVE_FAMILIES and not n.endswith("moddepth_gait"):
+            out.setdefault(fam, []).append(n)
+    return out
+
+
+
+# Engine.Receiver with the 107 bins stored (the shipped 103 are amp[:, IDX103]).
+class V5NReceiver(Receiver):
+
+    # Sets up the object.
+    def __init__(self):
+        super().__init__()
+        self.amp = np.empty((0, 107), np.float32)
+
+    # Function push.
+    def push(self, fr) -> None:
+        n0 = len(self._chunks)
+        super().push(fr)
+        if len(self._chunks) > n0:
+            from pipeline.identify.raw_access import amplitude_from_frames
+            tm, lt, ep, _a, rs = self._chunks[-1]
+            self._chunks[-1] = (tm, lt, ep, amplitude_from_frames(fr)[:, KEEP107][:, SC107].astype(np.float32), rs)
+
+
+# Engine.Extractor for v5n: the shipped direction and end detection, maps and decision clock (on the 103...
+class V5NExtractor(Extractor):
+
+    # Sets up the object.
+    def __init__(self, T: float = T_S, amp_norm: bool = False, layout: str = "id_spot", names: list = None,
+                 alpha: float = None, rx: dict = None, cut: bool = True):
+        super().__init__(T, amp_norm, layout, names, alpha, rx if rx is not None else {L: V5NReceiver() for L in LINKS}, cut)
+
+    # Function raw.
+    def _raw(self, t0: float, end: float, td: float) -> np.ndarray:
+        grid = np.arange(t0, end, 1.0 / FS)
+        return np.asarray([_IB._interp_cols(grid, t, a[:, IDX103].astype(np.float64)) for t, a, _r in [self.rx[L].timed(td) for L in LINKS]],
+                          np.float64)
+
+    # Function extract v4.
+    def extract_v4(self, w: dict, td: float, timed: list) -> dict:
+        t0, end = w["t0"], self._end(w)
+        layout = w["layout"]
+        e3 = min(t0 + DIR_T_S, end)
+        sm3 = signal_measures(self._raw(t0, e3, self.t_dec_end(t0, e3)), w["path"], layout)
+        path = sm3["path"]
+        walk_end = end
+        if self.alpha is not None:
+            series = []
+            for c in np.round(np.arange(DIR_T_S, self.T + 1e-9, DET_STEP_S), 2):
+                ec = min(t0 + c, end)
+                series.append((float(ec - t0), band_energy_rx2(self._raw(t0, ec, self.t_dec_end(t0, ec))[1])))
+                if ec < t0 + c:
+                    break
+            d = detect_end(series, self.alpha, upto=self.T)
+            if d is not None:
+                walk_end = min(t0 + d[0], end)
+        return self.window(w, timed, path, sm3, walk_end)
+
+    # The window once its path and walking span are known: the maps (v5s's), the live features and the H speed.
+    def window(self, w: dict, timed: list, path: str, sm3: dict, walk_end: float) -> dict:
+        t0, end = w["t0"], self._end(w)
+        layout = w["layout"]
+        T_win = self.T if end == t0 + self.T else end - t0
+        c0 = time.perf_counter()
+        grid = np.arange(t0, t0 + T_win, 1.0 / FS)
+        A_raw = np.asarray([_IB._interp_cols(grid, t, a[:, IDX103].astype(np.float64)) for t, a, _r in timed], np.float64)
+        maps = np.stack([_ZB.conditioned_map_v2(A_raw[li]) for li in range(3)]).astype(np.float32)
+        AN = np.asarray([resample(timed[k], grid, "N") for k in range(3)])
+        RL = np.asarray([resample_rssi(timed[k], grid) for k in range(3)])
+        fv = np.full(len(self.names), np.nan, np.float32)
+        fv[V5N_COLS] = live_features(AN, RL).astype(np.float32)
+        span = np.arange(t0, end, 1.0 / FS)
+        li, Fb = best_link(path, layout)
+        nw = int(np.searchsorted(span, walk_end, side="left"))
+        AH = np.asarray([resample(timed[k], span, "raw") for k in range(3)])
+        ft = torso_hz_h(AH[li][:nw]) if nw >= 64 else float("nan")
+        v = float(ft * LAM11 / (2.0 * Fb)) if (Fb >= F_MIN and np.isfinite(ft)) else float("nan")
+        return {"features": fv, "maps": maps, "layout": layout, "n_frames": [int(len(t)) for t, _a, _r in timed],
+                "extract_s": time.perf_counter() - c0, "path": path, "dir_detected": sm3["dir_detected"], "dir_slope": sm3["dir_slope"],
+                "speed_link": LINKS[li], "speed_F": Fb, "f_torso": ft, "wifi_speed": v, "walk_end_s": walk_end - t0,
+                "alpha": self.alpha, "window_s": end - t0, "engine": "v5n"}
+
+
+
+
+# A model folder whose manifest carries "v5n" (engine v5n).
+def is_v5n(model_dir) -> bool:
+    p = os.path.join(model_dir, "manifest.json") if model_dir else None
+    return bool(p and os.path.exists(p) and json.load(open(p)).get("v5n"))
+
+
 # A session's calibration pools and the model adapted to each.
 class Session:
 
@@ -814,7 +1084,8 @@ class Engine:
         if alpha is None and model_dir and os.path.exists(os.path.join(model_dir, "manifest.json")):
             alpha = json.load(open(os.path.join(model_dir, "manifest.json"))).get("alpha")
         self.alpha = alpha
-        self.ex = Extractor(T, amp_norm, layout, self.names, alpha)
+        self._xcls = V5NExtractor if is_v5n(model_dir) else Extractor
+        self.ex = self._xcls(T, amp_norm, layout, self.names, alpha)
         self.model = Model(model_dir, device, self.names) if model_dir else None
         self.session = Session(self.model) if self.model else None
         self.decisions = []
@@ -828,12 +1099,12 @@ class Engine:
 
     # Engine v5: the offset windows' extractors, sharing the main extractor's receivers, never cut by a press.
     def _offsets(self) -> None:
-        self.ex_off = {o: Extractor(self.ex.T, self.ex.amp_norm, self.ex.layout, self.names, self.alpha, rx=self.ex.rx, cut=False)
+        self.ex_off = {o: self._xcls(self.ex.T, self.ex.amp_norm, self.ex.layout, self.names, self.alpha, rx=self.ex.rx, cut=False)
                        for o in self.model.offsets}
 
     # A new stream (new capture files): the receivers restart; the session's calibration pool stays.
     def new_recording(self, layout: str = None) -> None:
-        self.ex = Extractor(self.ex.T, self.ex.amp_norm, layout or self.ex.layout, self.names, self.alpha)
+        self.ex = self._xcls(self.ex.T, self.ex.amp_norm, layout or self.ex.layout, self.names, self.alpha)
         if self.v5:
             self._offsets()
 
