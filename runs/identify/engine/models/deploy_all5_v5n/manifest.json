@@ -21,7 +21,7 @@
   "A3": "training windows' frames time-stretched by 0.9 and 1.1, pace v / s",
   "A4": "three windows per press at 0, 0.15 and 0.30 s, one CAL-causal pool, only the 0 s window joins it",
   "M3": "a sixth feature component, HistGradientBoostingClassifier(random_state=0) on rf_pace_prior's Prior-standardised matrix with pace (its state shared)",
-  "C2": "the feature components' weight a: 0.25 on a tracking walk in Room A when the model trained in Room A; 1 everywhere else",
+  "C2": "the feature components' weight a: 1 on every walk (since 25 Oct 2026, Queue 45)",
   "not_used": [
    "A5",
    "M2",
@@ -36,15 +36,7 @@
   "offsets": [
    0.15,
    0.3
-  ],
-  "room_weights": {
-   "trained": {
-    "A": 0.25,
-    "B": 1.0
-   },
-   "unseen": 1.0,
-   "identification": 1.0
-  }
+  ]
  },
  "derived_from": "deploy_all5_v5s",
  "cnn_sha256": {
@@ -123,6 +115,7 @@
    "cnn_members": "v5s's (raw amplitude, 103 bins)"
   },
   "built": "2026-10-24 19:18:20",
+  "feature_weight": "the feature weight a is 1 on every walk in every room (25 Oct 2026); the room-dependent weight (v5.room_weights) is removed and the engine takes no room",
   "derived_from": "deploy_all5_v5s"
  }
 }

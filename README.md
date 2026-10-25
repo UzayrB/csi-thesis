@@ -79,9 +79,9 @@ beside the TX, is only for the geometry test. The TX needs only power; the recei
 OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.frozen_model app
 ```
 
-A start dialog asks for the task, **Tracking** or **Identification**, and for identification the room (`A`, `B`, or `new`
-for a room the model never trained in). One task runs per run. To skip the dialog: `--task tracking`, or `--task
-identification --room new`; `--minutes 20` stops after 20 minutes. The app then runs the commands of sections 4 and 5,
+A start dialog asks for the task, **Tracking** or **Identification** (identification needs no room: the model weighs
+every walk the same in any room). One task runs per run. To skip the dialog: `--task tracking`, or `--task
+identification`; `--minutes 20` stops after 20 minutes. The app then runs the commands of sections 4 and 5,
 which also work on their own.
 
 ## 4. Tracking
@@ -117,7 +117,7 @@ walk starts at its start tape, and press q to stop.
 Started from the app, identification runs:
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.frozen_model identify --room new --popup
+OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.frozen_model identify --popup
 ```
 
 Walks can be on any of the twelve paths. A map of the twelve paths opens beside the identification window. Before each
@@ -136,7 +136,8 @@ feature components read the receivers' 107 bins, and each packet is divided by i
 features are taken, and the Doppler contours' percentile crossing is interpolated inside its bin. The three
 CNN components are v5s's, on the raw amplitude. `hgb_pace_prior` reads its standardiser from `state_rf_pace_prior.pkl`.
 The model's `manifest.json` names the five components in its `v5s` field, and its `v5n` field selects the v5n feature
-path in `pipeline/identify/engine.py`.
+path in `pipeline/identify/engine.py`. The feature components carry the weight 1 on every walk in every room, so the
+engine takes no room.
 
 ## Where the outputs go
 

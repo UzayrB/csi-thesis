@@ -266,7 +266,6 @@ def main(argv=None) -> int:
     t.add_argument("--minutes", type=float, default=None)
     t.add_argument("--mode", choices=("semi", "full"), default="semi")
     i = sub.add_parser("identify", help="ON THE BOARDS: identification (opens the serial ports)")
-    i.add_argument("--room", required=True, choices=("A", "B", "new"))
     i.add_argument("--layout", default="home", choices=("home", "id_spot"),
                    help="home (default): RX2 where tracking has it; id_spot: RX2 beside the TX, the geometry test only")
     i.add_argument("--minutes", type=float, default=None)
@@ -289,7 +288,7 @@ def main(argv=None) -> int:
         if not os.path.isdir(a.baseline):
             raise SystemExit("REFUSED: --baseline <dir> is required: this session's own 60 s empty-room capture")
         return rig(a.baseline, a.minutes, a.mode)
-    extra = ["--room", a.room, "--layout", a.layout] + (["--minutes", str(a.minutes)] if a.minutes else []) \
+    extra = ["--layout", a.layout] + (["--minutes", str(a.minutes)] if a.minutes else []) \
         + (["--device", a.device] if a.device else []) + (["--popup"] if a.popup else []) \
         + (["--no-focus-return"] if a.no_focus_return else [])
     sys.exit(identify(extra))

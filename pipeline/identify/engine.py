@@ -29,6 +29,7 @@ MIN_FEAT_CALIB = 10
 LINKS = ("RX1", "RX2", "RX3")
 CLASSES = ("P1", "P2", "P3", "P4", "P5", "P6")
 LABEL = "development evaluation, all data seen"
+FEATURE_WEIGHT = 1.0
 ENG = os.path.join("runs", "identify", "engine")
 DEV_NAMES = os.path.join("runs", "identify", "dev", "bank", "feature_names.json")
 
@@ -464,12 +465,11 @@ class Model:
         self.extra_feat = ()
         if self.version >= 5:
             v5 = self.manifest["v5"]
+            refuse_room_weights(model_dir, v5)
             self.extra_feat = tuple(v5["extra_feature_components"])
             for c in self.extra_feat:
                 self.feat[c] = pickle.load(open(os.path.join(model_dir, f"feat_{c}.pkl"), "rb"))
             self.offsets = tuple(float(o) for o in v5["offsets"])
-            self.room_weights = v5["room_weights"]
-            self.rooms = sorted({str(x)[0] for x in self.manifest["training_sessions"]})
         self.nets, self.norm = {}, {}
         for chan in (None, 0, 1, 2):
             tag = "cnn3" if chan is None else f"cnn_link{chan}"
@@ -499,6 +499,7 @@ class Model:
         self.version = int(man.get("engine_version", ENGINE_VERSION))
         assert self.version >= 5, "engine v5s needs an engine v5 model"
         v5, spec = man["v5"], man["v5s"]
+        refuse_room_weights(model_dir, v5)
         mem = tuple(spec["members"])
         all_feat = tuple(W.FEAT) + tuple(v5["extra_feature_components"])
         all_cnn = tuple(c for c in Z.COMPONENTS if c not in W.FEAT)
@@ -512,8 +513,6 @@ class Model:
             if base not in self.feat:
                 self.states[base] = pickle.load(open(os.path.join(model_dir, spec["state_files"][base]), "rb"))["state"]
         self.offsets = tuple(float(o) for o in v5["offsets"])
-        self.room_weights = v5["room_weights"]
-        self.rooms = sorted({str(x)[0] for x in man["training_sessions"]})
         self.cnn_tags = tuple(t for t in ("cnn3", "cnn_link0", "cnn_link1", "cnn_link2")
                               if any(t in V5S_CNN_TAGS[c] for c in mem if c in V5S_CNN_TAGS))
         self.nets, self.norm = {}, {}
@@ -532,12 +531,6 @@ class Model:
     def state(self, base: str):
         return self.feat[base]["state"] if base in self.feat else self.states[base]
 
-    # Engine v5's feature weight a for a window: the trained-room weight on a tracking walk (layout home) in a...
-    def weight(self, room: str, layout: str) -> float:
-        rw = self.room_weights
-        if layout != "home":
-            return float(rw["identification"])
-        return float(rw["trained"][room]) if room in self.rooms else float(rw["unseen"])
 
 
 _V2 = {}
@@ -1074,12 +1067,19 @@ class Session:
 
 
 
+# Engine v5 since 25 Oct 2026: the feature weight is 1 on every walk and the engine takes no room.
+def refuse_room_weights(model_dir: str, v5: dict) -> None:
+    if "room_weights" in v5:
+        raise ValueError(f"{model_dir}: the manifest carries room_weights, retired on 25 Oct 2026 (the feature weight is now 1 "
+                         "on every walk); this model's figures hold only at its room weights")
+
+
 # One press in, one decision out.
 class Engine:
 
     # Sets up the object.
     def __init__(self, model_dir=None, T: float = T_S, amp_norm: bool = False, layout: str = "id_spot",
-                 device: str = "cpu", names: list = None, alpha: float = None, room: str = None):
+                 device: str = "cpu", names: list = None, alpha: float = None):
         self.names = names if names is not None else json.load(open(DEV_NAMES))
         if alpha is None and model_dir and os.path.exists(os.path.join(model_dir, "manifest.json")):
             alpha = json.load(open(os.path.join(model_dir, "manifest.json"))).get("alpha")
@@ -1091,9 +1091,6 @@ class Engine:
         self.decisions = []
         self.v5 = bool(self.model is not None and self.model.version >= 5)
         if self.v5:
-            if room not in ("A", "B", "new"):
-                raise ValueError("an engine v5 model needs the installation's room, set once before any press: A, B or new")
-            self.room = room
             self._offsets()
             self._walks, self._order, self._wid = {}, [], 0
 
@@ -1144,14 +1141,13 @@ class Engine:
         while self._order and all(k in self._walks[self._order[0]]["wins"] for k in keys):
             W = self._walks.pop(self._order.pop(0))
             c0 = time.perf_counter()
-            a = self.model.weight(self.room, W["layout"])
             res = [self.session.classify(W["wins"][k][1]) for k in keys]
-            comb = self.session.combine(res, a)
+            comb = self.session.combine(res, FEATURE_WEIGHT)
             model_s = time.perf_counter() - c0
             td = W["wins"][keys[-1]][0]
             ex0 = W["wins"][0.0][1]
             d = {"t0": W["t0"], "t_dec": td, "T": self.ex.T, "info": W["info"], "extraction": ex0,
-                 "wait_s": td - (W["t0"] + self.ex.T), "engine_version": 5, "room": self.room,
+                 "wait_s": td - (W["t0"] + self.ex.T), "engine_version": 5,
                  "windows": {k: {"t_dec": W["wins"][k][0], "extraction": W["wins"][k][1], "components": r["components"]}
                              for k, r in zip(keys, res)},
                  "components": res[0]["components"], "calib_n": res[0]["calib_n"], "model_s": model_s, **comb}

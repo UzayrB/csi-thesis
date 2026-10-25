@@ -670,8 +670,7 @@ class EngineApp:
     def state(self) -> dict:
         return {"last": self.last, "model": self.model_name, "replay": self.replay, "walks_seen": len(self.e.session),
                 "open": self.e.open_windows, "round_trip": self.round_trip, "dmode": self.dmode, "names": self.names,
-                "score": tuple(self.score), "stream": self.stream_label, "v5": bool(getattr(self.e, "v5", False)),
-                "room": getattr(self.e, "room", None)}
+                "score": tuple(self.score), "stream": self.stream_label, "v5": bool(getattr(self.e, "v5", False))}
 
 
 # Function norm.
@@ -707,8 +706,8 @@ def line_of(d: dict, model: str, replay: bool, classes, names: dict = None) -> d
         t = d["tally"]["logp"]
         out["tally"] = {"k": int(d["tally"]["k"]), "top": classes[int(np.argmax(t))], "probability": round(float(np.exp(t).max()), 4)}
     if d.get("engine_version", 4) >= 5:
-        out["schema"] = "id_engine_decision_v3"
-        out.update({"engine_version": int(d["engine_version"]), "room": d["room"], "weight_a": round(float(d["weight_a"]), 4),
+        out["schema"] = "id_engine_decision_v4"
+        out.update({"engine_version": int(d["engine_version"]), "weight_a": round(float(d["weight_a"]), 4),
                     "windows_s": [round(float(k), 2) for k in d["windows"]],
                     "window_decisions_mono": [float(w["t_dec"]) for w in d["windows"].values()],
                     "components": {f"{k:.2f}": {c: [round(float(x), 4) for x in v] for c, v in w["components"].items()}
@@ -775,8 +774,6 @@ class EngineScreen:
         k_, n_ = st.get("score") or (0, 0)
         lines = [f"model: {st['model']}", "closed set: six enrolled people", "chance: 1 in 6",
                  f"adapting to this room: {st['walks_seen']} walks seen"]
-        if st.get("v5"):
-            lines.insert(1, f"room: {st['room']} (engine v5)")
         if n_:
             lines.append(f"correct {k_} of {n_} ({100 * k_ / n_:.1f} %), chance 16.7 %")
         if st["open"]:
@@ -1268,11 +1265,8 @@ def cmd_rig_recorded(a) -> int:
     model = a.model or final_model(a.session)
     md = model_dir(model) if not os.path.isabs(model) else model
     ts = guard(md, a.session)
-    room = a.session[0]
-    if a.room is not None and a.room != room:
-        raise SystemExit(f"REFUSED: --room {a.room}, but the recorded session {a.session} is in Room {room}")
     from pipeline.identify import ide_train as IT
-    eng = EN.Engine(md, T=EN.T_S, amp_norm=IT.gs_adopted(), layout="id_spot", device=rig_device(md, a.device), room=room)
+    eng = EN.Engine(md, T=EN.T_S, amp_norm=IT.gs_adopted(), layout="id_spot", device=rig_device(md, a.device))
     stem = time.strftime(f"rig_recorded_{a.session}_%Y%m%d_%H%M%S")
     app = EngineApp(eng, f"{os.path.basename(md)} (trained on {', '.join(ts)})", replay=True,
                     jsonl=os.path.join(OUT_DIR, f"{stem}.jsonl"), dmode=direction_mode(), extract_workers=a.extract_workers,
@@ -1302,9 +1296,6 @@ def cmd_rig(a) -> int:
     from pipeline.live.rig import run
     from pipeline.live.rig_run import identify, mapping_by_mac
     md, man = load_deployment()
-    if getattr(a, "room", None) not in ("A", "B", "new"):
-        raise SystemExit("REFUSED: the rig needs the installation's room before any press: --room A, --room B or --room new "
-                         "(a room the deployment model never trained in)")
     layout = getattr(a, "layout", None) or "home"
     if layout not in RIG_LAYOUTS:
         raise SystemExit(f"REFUSED: --layout {layout!r}: home (RX2 where tracking has it) or id_spot (the geometry test)")
@@ -1322,10 +1313,10 @@ def cmd_rig(a) -> int:
                f"RX2 at {rx2}{' (the tracking rig)' if layout == 'home' else ' (the geometry test)'}; direction: "
                + ("each walk's path picked on the map (the path pop-up), then SPACE" if popup else
                   'SPACE (the detector)' if dmode == 'detected' else 'the a / t keys (SPACE is refused here)'))
-    eng = EN.Engine(md, T=man["T_s"], amp_norm=man["gs_adopted"], layout=layout, device=dev, room=a.room)
+    eng = EN.Engine(md, T=man["T_s"], amp_norm=man["gs_adopted"], layout=layout, device=dev)
     stem = time.strftime("rig_%Y%m%d_%H%M%S")
     steps.step("Starting and warming the extraction workers")
-    app = EngineApp(eng, f"{man['model']} (all five sessions; room {a.room})", replay=False, jsonl=os.path.join(OUT_DIR, f"{stem}.jsonl"),
+    app = EngineApp(eng, f"{man['model']} (all five sessions)", replay=False, jsonl=os.path.join(OUT_DIR, f"{stem}.jsonl"),
                     dmode=dmode, extract_workers=getattr(a, "extract_workers", None),
                     extract_mode=getattr(a, "extract_mode", None))
     app.layout = layout
@@ -1348,7 +1339,7 @@ def cmd_rig(a) -> int:
                  "a (away from the TX) or t (towards it) once as each walker starts on line A; n = a new walker; q quits."),
                 "Keep the plot window visible during a walk (a hidden window can be slowed by macOS)."])
     rc = run(c, nodes, duration=a.minutes * 60.0 if a.minutes else None, mode="identify", stem=stem,
-             run_config={"model": man["model"], "room": a.room, "layout": layout, "direction_mode": dmode, "path_popup": popup,
+             run_config={"model": man["model"], "layout": layout, "direction_mode": dmode, "path_popup": popup,
                          "device": str(getattr(eng.model, "device", None)),
                          "extract_mode": getattr(a, "extract_mode", None) or EXTRACT_MODE_V5,
                          "extract_workers": getattr(a, "extract_workers", None), "jsonl": app.jsonl})
@@ -1356,7 +1347,7 @@ def cmd_rig(a) -> int:
     rec = getattr(c, "record_dir", None)
     if rec:
         with open(os.path.join(rec, f"{stem}.summary.json"), "w", encoding="utf-8") as f:
-            json.dump({"model": man["model"], "room": a.room, "layout": layout, "rx2": list(rx2), "direction_mode": dmode,
+            json.dump({"model": man["model"], "layout": layout, "rx2": list(rx2), "direction_mode": dmode,
                        "path_popup": popup, "popup_picks": (c.popup.history if popup else None),
                        "popup_clicks_ignored_during_a_walk": (c.popup.ignored if popup else None),
                        "space_refused": int(getattr(c, "refused", 0)), "device": str(getattr(eng.model, "device", None)),
@@ -1381,7 +1372,7 @@ def replay_session(session: str, model: str = None, realtime: bool = False, spee
     model = model or final_model(session)
     gs = IT.gs_adopted()
     dmode = RP.direction_mode()
-    eng = EN.Engine(model_dir(model), T=EN.T_S, amp_norm=gs, device=device, room=session[0])
+    eng = EN.Engine(model_dir(model), T=EN.T_S, amp_norm=gs, device=device)
     app = EngineApp(eng, f"{model} (never saw {session})", replay=True, jsonl=jsonl, dmode=dmode, extract_workers=extract_workers,
                     extract_mode=extract_mode)
     scr = EngineScreen(headless=not screen) if (screen or snapshots) else None
@@ -1487,9 +1478,6 @@ def main(argv=None) -> int:
                         "(`python3 -m pipeline.live app` turns this on); without it the keys are as before")
     k.add_argument("--no-focus-return", action="store_true",
                    help="with --popup: do not give the keyboard back to the Terminal after a click on the map")
-    k.add_argument("--room", default=None, choices=("A", "B", "new"),
-                   help="REQUIRED on the boards (engine v5): the installation's room, A, B, or new (a room the deployment "
-                        "model never trained in); a recorded stream takes it from its session")
     k.add_argument("--extract-workers", type=int, default=None, help=EXTRACT_HELP)
     k.add_argument("--extract-mode", choices=("staged", "pool"), default=None, help=EXTRACT_MODE_HELP)
     k.add_argument("--baseline", default=None, help="(ignored: the engine needs no empty-room baseline)")

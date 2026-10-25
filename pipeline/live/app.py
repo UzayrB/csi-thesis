@@ -11,7 +11,6 @@ import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TASKS = ("tracking", "identification")
-ROOMS = ("A", "B", "new")
 BASELINES = os.path.join("runs", "live", "baselines")
 BUILDS = {"dev": {"preflight": ["-m", "pipeline.live", "preflight"], "track": ["-m", "pipeline.live", "rig"],
                   "identify": ["-m", "pipeline.live.identify_engine", "rig"]},
@@ -21,7 +20,7 @@ BUILDS = {"dev": {"preflight": ["-m", "pipeline.live", "preflight"], "track": ["
 
 
 
-# The start dialog's window: the task, the room (identification only), Start and Cancel.
+# The start dialog's window: the task, Start and Cancel.
 def build_dialog(headless: bool = False):
     import matplotlib
     if headless:
@@ -34,25 +33,22 @@ def build_dialog(headless: bool = False):
     fig.text(0.05, 0.9, "The live app: one task per run", fontsize=13, weight="bold")
     fig.text(0.05, 0.82, "Nothing on the rig moves for either task.", fontsize=9, color="0.3")
     fig.text(0.05, 0.72, "Task", fontsize=10, weight="bold")
-    fig.text(0.53, 0.72, "Room (identification only)", fontsize=10, weight="bold")
     task = RadioButtons(fig.add_axes([0.05, 0.3, 0.42, 0.4], frameon=False), ("Tracking", "Identification"))
-    room = RadioButtons(fig.add_axes([0.53, 0.3, 0.42, 0.4], frameon=False),
-                        ("A", "B", "new (a room it never trained in)"), active=2)
     start = Button(fig.add_axes([0.53, 0.07, 0.2, 0.14]), "Start")
     cancel = Button(fig.add_axes([0.76, 0.07, 0.2, 0.14]), "Cancel")
     choice = {}
 
     # Function go.
     def go(_ev):
-        choice.update(task=task.value_selected.lower(), room=room.value_selected.split(" ")[0])
+        choice.update(task=task.value_selected.lower())
         plt.close(fig)
 
     start.on_clicked(go)
     cancel.on_clicked(lambda _ev: plt.close(fig))
-    return fig, choice, {"task": task, "room": room, "start": start, "cancel": cancel}
+    return fig, choice, {"task": task, "start": start, "cancel": cancel}
 
 
-# The start dialog, shown until Start or Cancel: {"task", "room"}, or None when cancelled or closed.
+# The start dialog, shown until Start or Cancel: {"task"}, or None when cancelled or closed.
 def dialog():
     import matplotlib.pyplot as plt
     fig, choice, _w = build_dialog()
@@ -110,7 +106,7 @@ def tracking(a) -> int:
 
 # Identification, as pipeline.live.identify_engine rig --layout home runs it, with the path pop-up.
 def identification(a) -> int:
-    return call([sys.executable, *BUILDS[a.build]["identify"], "--room", a.room, "--layout", "home", "--popup"]
+    return call([sys.executable, *BUILDS[a.build]["identify"], "--layout", "home", "--popup"]
                 + (["--minutes", str(a.minutes)] if a.minutes else []) + (["--no-focus-return"] if a.no_focus_return else []))
 
 
@@ -122,7 +118,6 @@ def main(argv=None, build: str = "dev") -> int:
     prog = "python3 -m pipeline.live app" if build == "dev" else "python3 -m pipeline.live.frozen_model app"
     ap = argparse.ArgumentParser(prog=prog, description=__doc__.split("\n")[0])
     ap.add_argument("--task", choices=TASKS, default=None, help="skip the dialog: the task to run")
-    ap.add_argument("--room", choices=ROOMS, default=None, help="identification: the installation's room (A, B or new)")
     ap.add_argument("--minutes", type=float, default=None, help="stop after this many minutes (default: until q)")
     ap.add_argument("--baseline", default=None, help="tracking: an earlier 60 s empty-room capture, instead of a new one")
     ap.add_argument("--stream", default=None, help="tracking: a recorded <session>/<stem> through the boards' ingestion path")
@@ -139,12 +134,10 @@ def main(argv=None, build: str = "dev") -> int:
         if ch is None:
             print("Cancelled: no task was started.", flush=True)
             return 1
-        a.task, a.room = ch["task"], (a.room or ch["room"])
-    if a.task == "identification" and a.room is None:
-        raise SystemExit("REFUSED: identification needs the installation's room: --room A, --room B or --room new")
+        a.task = ch["task"]
     if a.task == "identification" and (a.stream or a.baseline):
         raise SystemExit("REFUSED: --stream and --baseline are tracking options")
-    print(f"THE LIVE APP: {a.task}" + (f", room {a.room}" if a.task == "identification" else ""), flush=True)
+    print(f"THE LIVE APP: {a.task}", flush=True)
     return FLOWS[a.task](a)
 
 
