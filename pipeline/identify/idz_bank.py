@@ -219,7 +219,7 @@ def build(out: str, context_s: float = 0.0, amp_norm: bool = False, cadence_env:
 
 # Function main.
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     ap.add_argument("--out", required=True)
     ap.add_argument("--context", type=float, default=0.0)
     ap.add_argument("--amp-norm", action="store_true")

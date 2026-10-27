@@ -1,0 +1,120 @@
+{
+ "model": "loso_A3_v5n",
+ "engine_version": 5,
+ "T_s": 4.0,
+ "alpha": 0.5,
+ "training_sessions": [
+  "A1",
+  "A2",
+  "B1",
+  "B2"
+ ],
+ "training_rooms": [
+  "A",
+  "B"
+ ],
+ "n_train": 899,
+ "n_extra_windows": 10788,
+ "flags": {
+  "A1": "training windows every 0.05 s from 0.05 to 0.50 s after the press (F7's 0.15 and 0.30 included)",
+  "A3": "training windows' frames time-stretched by 0.9 and 1.1, pace v / s",
+  "A4": "three windows per press at 0, 0.15 and 0.30 s, one CAL-causal pool, only the 0 s window joins it",
+  "M3": "a sixth feature component, HistGradientBoostingClassifier(random_state=0) on rf_pace_prior's Prior-standardised matrix with pace (its state shared)",
+  "C2": "the feature components' weight a: 1 on every walk (since 25 Oct 2026, Queue 45)",
+  "not_used": [
+   "A5",
+   "M2",
+   "P1",
+   "P2"
+  ]
+ },
+ "v5": {
+  "extra_feature_components": [
+   "hgb_pace_prior"
+  ],
+  "offsets": [
+   0.15,
+   0.3
+  ]
+ },
+ "derived_from": "loso_A3_v4",
+ "cnn_sha256": {
+  "cnn3_norm.pkl": "59c30a3576de4a127508baf91d5f5e784a46e334628f61ef9054d2ecf63846ce",
+  "cnn_link0_norm.pkl": "9c8e9dcd65f8b228cb5702f3dd3c9c707cbaf5f883dcffefe432bc6d5a3b7765",
+  "cnn_link1_norm.pkl": "8bb1e0b3748be2bdc9ccde9c89882728b3729e0bed6368013d94893e4483f743",
+  "cnn_link2_norm.pkl": "a1726251420851daebfca31669b4f1ea10f18f7f8191305c577966baa17a7216",
+  "cnn3_seed0.pt": "9d647de943489a26a81b2248386804d6287c47cc9b5232460e8827207063a3d6",
+  "cnn3_seed1.pt": "725b2d3a27909308ec5e8e2590388834b7518fb74cc195ce16a4c6df1331488a",
+  "cnn3_seed2.pt": "c4deeecc073bc770dd24e30b3ad4f90b4b01c4851614b2fa89d3c8bec5f237c1",
+  "cnn_link0_seed0.pt": "d6fefd5942b166af683ffcaa8cbf06ea814141e713df93e97c2584b3772757e2",
+  "cnn_link0_seed1.pt": "7d74c48503f8f7fa05df05bd8e478843f4c0a9b1b4e0d9184c73a6c0ab356184",
+  "cnn_link0_seed2.pt": "a28b8345a3ba91a17128303a12f03fed4de152fa659bbd742ba95ae91f44f322",
+  "cnn_link1_seed0.pt": "a5795b067ba5077199d38c43cc556803f10c8a376258cd74746ce39b1e0d5074",
+  "cnn_link1_seed1.pt": "d6a07eb7ee8371b7539707884372f2a6732901d825650675be5e3aae74a7b86e",
+  "cnn_link1_seed2.pt": "329abbca1307c92a8a868fddf30dc5068bd53c79aa2ecade9b68d443902370ad",
+  "cnn_link2_seed0.pt": "0ff3c7c1e68bebc9958c319ba7e8b000c837f49867308e52fc8cfba9ba9c8aea",
+  "cnn_link2_seed1.pt": "77298c6b32005bfa9c6c57a24d9d8102c513cca3015bd7962080369a6c4868e3",
+  "cnn_link2_seed2.pt": "491ab86bd3e08039e3fab3468d5ece096251b87678f1247a63943d41421563b5"
+ },
+ "config": {
+  "bank": "runs/identify/engine/bank_T4.0_v4",
+  "cols": "v2",
+  "layout": false,
+  "fn": false,
+  "amp_norm": false,
+  "engine_T": 4.0,
+  "engine_version": 4,
+  "alpha": 0.5
+ },
+ "bank": "runs/identify/engine/bank_T4.0_v4",
+ "code_commit_at_training": "798b08f6baf710dccf2771c6902c29d3368d40ad",
+ "plan": "runs/identify/v5/QUEUE_V5.md (Uzayr's brief)",
+ "configuration_source": "runs/identify/roomA/stores/split_A3.npz (the Room A run's A3-half choice)",
+ "use": "engine v5n's fold model for session A3: trained on A1, A2, B1, B2, never on A3; replay-identify and the recorded rig run on A3 use it",
+ "label": "development evaluation, all data seen",
+ "built": "2026-10-24T09:54:48",
+ "seconds_training": 187.0,
+ "gs_adopted": false,
+ "manifest_note": "2026-10-10 19:57:06: gs_adopted added from loso_A3_v4's manifest (the live app's deployment check requires it; found by step 6's smoke test); nothing else changed",
+ "v5s": {
+  "members": [
+   "lda_pace_prior",
+   "hgb_pace_prior",
+   "cnn",
+   "cnn_prior",
+   "cnn_perlink_prior"
+  ],
+  "removed": [
+   "rf",
+   "rf_prior",
+   "rf_pace_prior",
+   "et_pace_prior"
+  ],
+  "derived_from": "loso_A3_v5",
+  "state_files": {
+   "rf_pace_prior": "state_rf_pace_prior.pkl"
+  },
+  "feat_sha256": {
+   "feat_lda_pace_prior.pkl": "3b14dc7788b7a7897573431327b24c7b8a50fa4936167580da9e5261df1ecfff",
+   "feat_hgb_pace_prior.pkl": "3a3af3b27632ac73b65bab7ee66195b102733dc5e45e2d499a2b229ad76e64eb"
+  },
+  "state_sha256": {
+   "state_rf_pace_prior.pkl": "72aa2d08e649c0dfbaef66d8e98e66a0e729ff741889c5cf260dede158c8d085"
+  }
+ },
+ "v5n": {
+  "what": "engine v5n = v5s with H + N on its two feature members (Queue 42's F1 + M0, adopted by Uzayr 24 Oct 19:05)",
+  "feature_sha256": {
+   "feat_lda_pace_prior.pkl": "3b14dc7788b7a7897573431327b24c7b8a50fa4936167580da9e5261df1ecfff",
+   "feat_hgb_pace_prior.pkl": "3a3af3b27632ac73b65bab7ee66195b102733dc5e45e2d499a2b229ad76e64eb",
+   "state_rf_pace_prior.pkl": "72aa2d08e649c0dfbaef66d8e98e66a0e729ff741889c5cf260dede158c8d085"
+  },
+  "conditioning": {
+   "feature_members": "H (107 bins, interpolated percentile crossing, unpadded STFTs, wavelength 0.12177 m) and N (each packet divided by its mean over the bins before interpolating)",
+   "cnn_members": "v5s's (raw amplitude, 103 bins)"
+  },
+  "built": "2026-10-24 19:18:20",
+  "feature_weight": "the feature weight a is 1 on every walk in every room (25 Oct 2026); the room-dependent weight (v5.room_weights) is removed and the engine takes no room",
+  "derived_from": "the engine v5s fold model for A3"
+ }
+}

@@ -177,7 +177,7 @@ def run(d: str, fig_dir: str = None) -> dict:
 
 # Function main.
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     ap.add_argument("--dir", default=os.path.join("data", "rehearsal_idpath"))
     ap.add_argument("--figures", default=os.path.join("runs", "identify", "rehearsal_doppler"))
     a = ap.parse_args(argv)

@@ -201,7 +201,7 @@ def loso(bank, arm: str, **kw) -> dict:
 
 # Function main.
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     ap.add_argument("--arms", nargs="+", default=["rf_primary", "s0", "recsig"])
     ap.add_argument("--tag", default=time.strftime("%Y%m%dT%H%M%S"))
     ap.add_argument("--steps", type=int, default=3000)

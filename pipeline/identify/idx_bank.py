@@ -26,8 +26,20 @@ TRACK = {"A1": ("data/room_A/session_01", "_walk"), "A2": ("data/room_A/session_
 IDCAP = {"B1": os.path.join(R.DST, "session_01"), "B2": os.path.join(R.DST, "session_02")}
 
 
+# The relabelled identification source, built once from data/ and the shipped relabel manifest when it is missing.
+def ensure_relabelled() -> None:
+    if os.path.exists(os.path.join(R.DST, R.MARKER)):
+        return
+    try:
+        doc = R.build()
+    except R.Refused as e:
+        raise SystemExit(f"REFUSED: the identification recordings are needed in data/room_B/identification ({e})")
+    print(f"built {R.DST} from data/: {len(doc['rewritten'])} block(s) relabelled, every other file linked", flush=True)
+
+
 # Function recordings.
 def recordings() -> list:
+    ensure_relabelled()
     out = []
     for ses, (d, suf) in TRACK.items():
         for name in SIX:

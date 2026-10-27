@@ -36,6 +36,12 @@ def model_dir(name: str) -> str:
     return os.path.join(REPO_ROOT, "runs", "identify", "engine", "models", name)
 
 
+# Whether a model's features use the per-packet gain step (its manifest's gs_adopted; false for every shipped model).
+def gs_of(md: str) -> bool:
+    with open(os.path.join(md, "manifest.json"), encoding="utf-8") as f:
+        return bool(json.load(f)["gs_adopted"])
+
+
 NUMBER_WORDS = {5: "five", 8: "eight", 9: "nine"}
 
 
@@ -1265,8 +1271,7 @@ def cmd_rig_recorded(a) -> int:
     model = a.model or final_model(a.session)
     md = model_dir(model) if not os.path.isabs(model) else model
     ts = guard(md, a.session)
-    from pipeline.identify import ide_train as IT
-    eng = EN.Engine(md, T=EN.T_S, amp_norm=IT.gs_adopted(), layout="id_spot", device=rig_device(md, a.device))
+    eng = EN.Engine(md, T=EN.T_S, amp_norm=gs_of(md), layout="id_spot", device=rig_device(md, a.device))
     stem = time.strftime(f"rig_recorded_{a.session}_%Y%m%d_%H%M%S")
     app = EngineApp(eng, f"{os.path.basename(md)} (trained on {', '.join(ts)})", replay=True,
                     jsonl=os.path.join(OUT_DIR, f"{stem}.jsonl"), dmode=direction_mode(), extract_workers=a.extract_workers,
@@ -1366,11 +1371,10 @@ def replay_session(session: str, model: str = None, realtime: bool = False, spee
                    extract_mode: str = None) -> EngineApp:
     from pipeline.identify import engine as EN
     from pipeline.identify import ide_replay as RP
-    from pipeline.identify import ide_train as IT
     from pipeline.io.capture_logger import read_capture_file
     os.chdir(REPO_ROOT)
     model = model or final_model(session)
-    gs = IT.gs_adopted()
+    gs = gs_of(model_dir(model))
     dmode = RP.direction_mode()
     eng = EN.Engine(model_dir(model), T=EN.T_S, amp_norm=gs, device=device)
     app = EngineApp(eng, f"{model} (never saw {session})", replay=True, jsonl=jsonl, dmode=dmode, extract_workers=extract_workers,

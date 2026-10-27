@@ -120,7 +120,7 @@ def run(session: str, model: str, T: float = 3.0, device: str = "cpu", tag: str 
 
 # Function main.
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     ap.add_argument("--session", required=True, nargs="+")
     ap.add_argument("--model", required=True, nargs="+", help="one model per session, in the same order")
     ap.add_argument("--T", type=float, default=3.0)

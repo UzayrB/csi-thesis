@@ -280,7 +280,7 @@ def run(arms, selects, tag, seeds, steps, device="cpu") -> dict:
 
 # Function main.
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     ap.add_argument("--arms", nargs="*", default=[])
     ap.add_argument("--select", nargs="*", default=[], help="name:cand1,cand2,...")
     ap.add_argument("--tag", required=True)

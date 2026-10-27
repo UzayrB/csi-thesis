@@ -1,0 +1,55 @@
+{
+ "rule_id": "idrelabel-2026-09-28",
+ "rule": "Where two consecutive presses in a walk block are 0.3 s apart or less, the later is an extra press and is removed, and the block's presses from that pass on are regrouped in sixes, in order. A pass left with fewer than six presses is excluded.",
+ "gap_s": 0.3,
+ "written_at": "2026-09-28T08:44:28",
+ "src": "data/room_B/identification",
+ "blocks_scanned": 36,
+ "passes_relabelled": 1,
+ "passes_excluded": 1,
+ "changes": [
+  {
+   "file": "session_02/participant_PA4_idpath_d2_fast.gt.json",
+   "sha256_before": "63a5f869af9652a49d1abe3f25b11828b242b267a96001d6c13183f59492688d",
+   "relabelled": [
+    {
+     "pass_id": 9,
+     "path_name": "A_fwd",
+     "before": {
+      "t_start": 849050.912592583,
+      "t_end": 849053.775593666,
+      "anchor_times": [
+       849050.912592583,
+       849051.583205083,
+       849052.362503916,
+       849052.528761416,
+       849053.047411541,
+       849053.775593666
+      ]
+     },
+     "after": {
+      "t_start": 849050.912592583,
+      "t_end": 849054.614404041,
+      "anchor_times": [
+       849050.912592583,
+       849051.583205083,
+       849052.362503916,
+       849053.047411541,
+       849053.775593666,
+       849054.614404041
+      ]
+     }
+    }
+   ],
+   "excluded": [
+    {
+     "pass_id": 10,
+     "path_name": "A_rev",
+     "presses": 5,
+     "why": "left with fewer than six presses by the relabel rule"
+    }
+   ]
+  }
+ ],
+ "anonymised": "participants as PA codes (27 Oct 2026); sha256_before is the anonymised file's; the change itself is the manifest of 28 Sept 2026"
+}

@@ -519,7 +519,7 @@ def run(cfg: Config, rerun_reason: str = None, y_override=None) -> dict:
 
 # Function main.
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     ap.add_argument("--data-root", default=DATA_ROOT)
     ap.add_argument("--rerun-reason", default=None)
     a = ap.parse_args(argv)

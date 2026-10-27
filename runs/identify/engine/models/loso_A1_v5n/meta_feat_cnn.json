@@ -1,0 +1,37 @@
+{
+ "built": "2026-10-10T18:36:12",
+ "n_train": 899,
+ "seeds": [
+  0,
+  1,
+  2
+ ],
+ "steps": 6000,
+ "device": "mps",
+ "cfg": {
+  "bank": "runs/identify/engine/bank_T4.0_v4",
+  "cols": "v2",
+  "layout": false,
+  "fn": false,
+  "amp_norm": false,
+  "engine_T": 4.0,
+  "engine_version": 4,
+  "alpha": 0.5
+ },
+ "parts": [
+  "feat",
+  "cnn"
+ ],
+ "seconds": 1232.0,
+ "feature_components": [
+  "rf",
+  "rf_prior",
+  "rf_pace_prior",
+  "et_pace_prior",
+  "lda_pace_prior",
+  "hgb_pace_prior"
+ ],
+ "cnn_components": "copied unchanged from runs/identify/engine/models/loso_A1_v4 (sha256 checked)",
+ "seconds_feature_retraining": 8.6,
+ "engine_version": 5
+}

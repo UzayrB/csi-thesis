@@ -13,10 +13,11 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 TASKS = ("tracking", "identification")
 BASELINES = os.path.join("runs", "live", "baselines")
 BUILDS = {"dev": {"preflight": ["-m", "pipeline.live", "preflight"], "track": ["-m", "pipeline.live", "rig"],
-                  "identify": ["-m", "pipeline.live.identify_engine", "rig"]},
+                  "identify": ["-m", "pipeline.live.identify_engine", "rig"], "stream": ["-m", "pipeline.live", "rig"]},
           "public": {"preflight": ["-m", "pipeline.live.frozen_model", "preflight"],
                      "track": ["-m", "pipeline.live.frozen_model", "track"],
-                     "identify": ["-m", "pipeline.live.frozen_model", "identify"]}}
+                     "identify": ["-m", "pipeline.live.frozen_model", "identify"],
+                     "stream": ["-m", "pipeline.live.frozen_model", "stream"]}}
 
 
 
@@ -95,7 +96,7 @@ def capture_baseline(build: str = "dev") -> str:
 def tracking(a) -> int:
     py, cmd = sys.executable, BUILDS[a.build]
     if a.stream:
-        return call([py, "-m", "pipeline.live", "rig", "--stream", a.stream]
+        return call([py, *cmd["stream"], "--stream", a.stream]
                     + (["--speed", str(a.speed)] if a.speed is not None else []) + (["--screen", a.screen] if a.screen else []))
     base = a.baseline or capture_baseline(a.build)
     rc = call([py, *cmd["preflight"], "--baseline", base])
@@ -116,7 +117,7 @@ FLOWS = {"tracking": tracking, "identification": identification}
 # Build: "dev" (python3 -m pipeline.live app) or "public" (python3 -m pipeline.live.frozen_model app).
 def main(argv=None, build: str = "dev") -> int:
     prog = "python3 -m pipeline.live app" if build == "dev" else "python3 -m pipeline.live.frozen_model app"
-    ap = argparse.ArgumentParser(prog=prog, description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(prog=prog, description=(__doc__ or "").split("\n")[0])
     ap.add_argument("--task", choices=TASKS, default=None, help="skip the dialog: the task to run")
     ap.add_argument("--minutes", type=float, default=None, help="stop after this many minutes (default: until q)")
     ap.add_argument("--baseline", default=None, help="tracking: an earlier 60 s empty-room capture, instead of a new one")
@@ -127,8 +128,9 @@ def main(argv=None, build: str = "dev") -> int:
                     help="identification: do not give the keyboard back to the Terminal after a click on the map")
     a = ap.parse_args(argv)
     a.build = build
-    if build == "public" and a.stream:
-        raise SystemExit("REFUSED: --stream needs the recordings, which the public build does not have")
+    if build == "public" and a.stream and not os.path.isdir(os.path.join(REPO_ROOT, "data")):
+        raise SystemExit("REFUSED: --stream needs the recordings in data/: download room_A_anon.zip and room_B_anon.zip and "
+                         "unzip them in the repository root (README, \"Run the thesis code on the recorded data\")")
     if a.task is None:
         ch = dialog()
         if ch is None:

@@ -255,9 +255,14 @@ def main(argv=None) -> int:
     if argv[:1] == ["app"]:
         from pipeline.live.app import main as amain
         return amain(argv[1:], build="public")
+    if argv[:1] == ["stream"]:
+        from pipeline.live.stream_frozen import main as smain
+        return smain(argv[1:])
     ap = argparse.ArgumentParser(prog="python3 -m pipeline.live.frozen_model")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("app", help="THE LIVE APP: a start dialog, tracking or identification (pipeline/live/app.py)", add_help=False)
+    sub.add_parser("stream", help="NO BOARDS: tracking on a recorded walk recording from data/, streamed in real time "
+                   "(pipeline/live/stream_frozen.py)", add_help=False)
     sub.add_parser("ports", help="the receivers' ports by MAC, as RX1=<port>,RX2=<port>,RX3=<port> (for the baseline)")
     p = sub.add_parser("preflight", help="the checks before a board run (opens no port)")
     p.add_argument("--baseline", default=None)
