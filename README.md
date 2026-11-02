@@ -46,7 +46,10 @@ Without the boards: tracking_streamed.py (main stream) and identification_stream
 
 ## Requirements
 
-- A Mac (Apple silicon) with Python 3.13 and: `pip install -r requirements.txt`
+- A Mac (Apple silicon) with Python 3.13, in an environment of its own, with the packages: `python3 -m venv .venv`,
+  `source .venv/bin/activate`, then `pip install -r requirements.txt` (or a conda environment). Every command below
+  uses `python`, that environment's interpreter; check with `python -c "import numpy, torch, matplotlib"`, which
+  prints nothing when all is well.
 - Four ESP32 boards flashed as in step 0: one transmitter (channel 11, 20 MHz, 150 packets per second) and three
   receivers on USB.
 - Tape: the 5 m x 5 m grid and its twelve lines as in `Paths.png`. Coordinates below are metres on that grid.
@@ -75,12 +78,12 @@ shasum -a 256 -c runs/public_model/identification_hashes.txt
 | RX3 | (5.5, 2.5) |
 
 Both tasks use these positions; nothing moves between them. The TX needs only power; the receivers plug into the Mac. Write your receivers' MAC addresses (printed by
-`python3 -m pipeline.io.RunLive.board_identify`) into `runs/public_model/boards.json`.
+`python -m pipeline.io.RunLive.board_identify`) into `runs/public_model/boards.json`.
 
 ## 3. The app: one command
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.RunLive.main app
+OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.live.RunLive.main app
 ```
 
 A start dialog asks for the task, **Tracking** or **Identification** (identification needs no room: the model weighs
@@ -95,22 +98,22 @@ stops if a line fails) and starts tracking (`--baseline <folder>` reuses an earl
 record 60 s of the empty room (nobody moves), then check everything:
 
 ```
-NODES=$(OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.RunLive.main ports)
+NODES=$(OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.live.RunLive.main ports)
 ```
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.io.RunLive.serial_capture --duration 60 --out runs/live/baselines --nodes "$NODES" --reset --interval 10
+OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.RunLive.serial_capture --duration 60 --out runs/live/baselines --nodes "$NODES" --reset --interval 10
 ```
 ```
 BASE=$(ls -td runs/live/baselines/*/ | head -1)
 ```
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.RunLive.main preflight --baseline "$BASE"
+OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.live.RunLive.main preflight --baseline "$BASE"
 ```
 
 Every line must read `ok`. Then run tracking:
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.RunLive.main track --baseline "$BASE"
+OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.live.RunLive.main track --baseline "$BASE"
 ```
 
 When it prints READY, click on the Terminal (the keys are read there), stand still for 10 s, press SPACE once as each
@@ -121,7 +124,7 @@ walk starts at its start tape, and press q to stop.
 Started from the app, identification runs:
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.RunLive.main identify --popup
+OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.live.RunLive.main identify --popup
 ```
 
 Walks can be on any of the twelve paths. One window opens, and every walk goes through it in three steps:
@@ -176,27 +179,27 @@ the line parser and the rig's consumer; only the packet source is replaced) to t
 Each walk's recorded start press is given as a SPACE at its recorded time:
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.RunLive.main app --task tracking --stream B2/participant_PA5_walk
+OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.live.RunLive.main app --task tracking --stream B2/participant_PA5_walk
 ```
 
 `--stream <session>/<stem>`: the session is A1, A2, A3, B1 or B2, and the stem is a recording's name without its
 `.gt.json` (list them with `ls data/room_B/session_B2/*.gt.json`). A recording takes about 6 minutes and plays in real
 time only. The frozen tracker was trained on A1, A2 and B1, so A3 and B2 are the sessions it never saw. The run writes
 `runs/live/stream/<session>__<stem>/`: `log.jsonl` (every output), `summary.json` and `capture/` (the packets and presses
-as the app received them). `python3 -m pipeline.live.RunLive.main stream --stream B2/participant_PA5_walk --no-window`
+as the app received them). `python -m pipeline.live.RunLive.main stream --stream B2/participant_PA5_walk --no-window`
 runs it without the window.
 
 **Identification.** A session's walks are decided by the fold model that never saw that session
 (`runs/identify/engine/models/loso_<session>_v5n`). Streamed through the live app with its window:
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.RunLive.identification_app rig --source recorded --session B2 --screen --speed max
+OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.live.RunLive.identification_app rig --source recorded --session B2 --screen --speed max
 ```
 
 (`--speed 1` plays in real time.) Every walk decided as fast as the CPU allows, without a window:
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.RunLive.identification_app replay-identify --session B2
+OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.live.RunLive.identification_app replay-identify --session B2
 ```
 
 Each writes one line per decision to `runs/live/identify/` (`rig_recorded_B2_<date>_<time>.jsonl` or

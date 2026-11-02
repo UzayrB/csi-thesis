@@ -184,7 +184,7 @@ def _hashes_ok(listing: str, root: str) -> tuple:
 def board_macs() -> dict:
     if not os.path.exists(BOARDS):
         raise SystemExit(f"REFUSED: {BOARDS} is missing: write your receivers' MACs there ({{\"RX1\": ..., \"RX2\": ..., "
-                         "\"RX3\": ...}}; `python3 -m pipeline.io.RunLive.board_identify` prints them)")
+                         "\"RX3\": ...}}; `python -m pipeline.io.RunLive.board_identify` prints them)")
     with open(BOARDS, encoding="utf-8") as f:
         m = {k: str(v).lower() for k, v in json.load(f).items()}
     if set(m) != {"RX1", "RX2", "RX3"}:
@@ -257,7 +257,7 @@ def main(argv=None) -> int:
     if argv[:1] == ["stream"]:
         from pipeline.live.RunLive.tracking_streamed import main as smain
         return smain(argv[1:])
-    ap = argparse.ArgumentParser(prog="python3 -m pipeline.live.RunLive.main")
+    ap = argparse.ArgumentParser(prog="python -m pipeline.live.RunLive.main")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("app", help="THE LIVE APP: a start dialog, tracking or identification (pipeline/live/RunLive/start_dialog.py)", add_help=False)
     sub.add_parser("stream", help="NO BOARDS: tracking on a recorded walk recording from data/, streamed in real time "

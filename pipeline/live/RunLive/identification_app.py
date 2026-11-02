@@ -55,7 +55,7 @@ def load_deployment() -> tuple:
     d = model_dir(deployment_model())
     p = os.path.join(d, "manifest.json")
     if not os.path.exists(p):
-        raise SystemExit(f"REFUSED: no deployment manifest at {p} (train it: python3 -m pipeline.identify.RunLive.support.ide_train deploy_all5)")
+        raise SystemExit(f"REFUSED: no deployment manifest at {p} (train it: python -m pipeline.identify.RunLive.support.ide_train deploy_all5)")
     man = json.load(open(p))
     for k in ("model", "gs_adopted", "T_s", "config", "code_commit_at_training"):
         if k not in man:
@@ -1573,7 +1573,7 @@ def cmd_replay(a) -> int:
 def main(argv=None) -> int:
     import argparse
     import sys
-    ap = argparse.ArgumentParser(prog="python3 -m pipeline.live.RunLive.identification_app",
+    ap = argparse.ArgumentParser(prog="python -m pipeline.live.RunLive.identification_app",
                                  description="identification: the one-press engine")
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("replay-identify", help="replay a recorded session through the app (the fold model that never saw it)")

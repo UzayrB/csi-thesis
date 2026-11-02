@@ -114,9 +114,9 @@ def identification(a) -> int:
 FLOWS = {"tracking": tracking, "identification": identification}
 
 
-# Python3 -m pipeline.live.RunLive.main app: the start window, then the chosen task's steps.
+# Python -m pipeline.live.RunLive.main app: the start window, then the chosen task's steps.
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="python3 -m pipeline.live.RunLive.main app", description=(__doc__ or "").split("\n")[0])
+    ap = argparse.ArgumentParser(prog="python -m pipeline.live.RunLive.main app", description=(__doc__ or "").split("\n")[0])
     ap.add_argument("--task", choices=TASKS, default=None, help="skip the dialog: the task to run")
     ap.add_argument("--minutes", type=float, default=None, help="stop after this many minutes (default: until q)")
     ap.add_argument("--baseline", default=None, help="tracking: an earlier 60 s empty-room capture, instead of a new one")

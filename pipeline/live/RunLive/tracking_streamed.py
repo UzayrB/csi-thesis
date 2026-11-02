@@ -306,7 +306,7 @@ class Grabber:
 # Function main.
 def main(argv=None) -> int:
     import argparse
-    ap = argparse.ArgumentParser(prog="python3 -m pipeline.live.RunLive.main stream")
+    ap = argparse.ArgumentParser(prog="python -m pipeline.live.RunLive.main stream")
     ap.add_argument("--stream", required=True, help="<session>/<stem>, e.g. B2/participant_PA5_walk")
     ap.add_argument("--speed", type=float, default=1.0, help="must be 1 (real time); kept for the app's --speed")
     ap.add_argument("--screen", default=None, help="record the screen to an .mp4 in this folder (no window; needs ffmpeg)")
