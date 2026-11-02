@@ -1,3 +1,3 @@
 # Author: Uzayr Ballim
 # Debugger: Claude
-# What the file does: Pipeline.live: the TDR-03 system running live on the rig, identification mode then tracking mode.
+# What the file does: The app: the start window, the board runs, tracking, identification and the streamed runs.

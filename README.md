@@ -9,33 +9,37 @@ on them without boards (a streamed run), and with the boards and this README the
 
 ## How it fits together
 
-Start at `pipeline/live/frozen_model.py`: `app` opens a start dialog (tracking or identification) and runs the task with the
-other four commands (`ports`, `preflight`, `track`, `identify`), which are the whole app.
+Every file the app runs is in a `RunLive/` folder, named for what it does, and nothing else is in `pipeline/`. Start at
+`pipeline/live/RunLive/main.py`: `app` opens a start window (tracking or identification) and runs that task with the
+other commands (`ports`, `preflight`, `track`, `identify`, `stream`), which also work on their own.
 
 ```
-pipeline/live/frozen_model.py      the entry point: app | ports | preflight | track | identify
-pipeline/live/app.py               app: the start dialog, then one task's own commands
-pipeline/live/stream_frozen.py     stream: a recording from data/ in place of the boards (section 6)
+pipeline/live/RunLive/main.py            the entry point: app | ports | preflight | track | identify | stream
+pipeline/live/RunLive/start_dialog.py    app: the start window, then the chosen task's steps in order
 
 ESP32 receivers over USB
-  -> pipeline/io/capture_logger.py   reads each receiver's serial port
-  -> pipeline/io/parse.py            turns each line into one CSI record
-  -> pipeline/live/rig.py            hands the records and the key presses to the running mode
-       track      final_model.py runs the session: tracking.py -> stream.py, pool.py, start_terms.py,
-                  decoder.py, display.py -> pipeline/constrained (decoder.py, paths.py, switching.py);
-                  screen.py draws it. Model: runs/public_model/tracking/f05_A3/
-       identify   identify_frozen.py -> identify_engine.py -> pipeline/identify/engine.py; the path map
-                  (identify_engine.PathPopup) gives each walk's path. Model: runs/identify/engine/models/deploy_all5_v5n/
+  -> pipeline/io/RunLive/serial_capture.py     one reader thread per receiver, packet rate and loss checks
+  -> pipeline/io/RunLive/serial_parse_csi.py   each line into one CSI record
+  -> pipeline/live/RunLive/boards_run.py       the records and the key presses, on one clock, to the running task
+       track     tracking_model.py builds the frozen tracker and the session (tracking_session.py):
+                 tracking_windows.py (2 s windows, with io/RunLive/signal_cleaning.py) -> tracking_networks.py and
+                 constrained/RunLive/network_*.py -> tracking_start_of_walk.py -> tracking_line_decision.py
+                 (constrained/RunLive/decoder_*.py) -> tracking_display.py -> tracking_screen.py draws it.
+                 Model: runs/public_model/tracking/f05_A3/
+       identify  identification_on_boards.py -> identification_app.py (the path map and the result window) ->
+                 identify/RunLive/identification_engine.py (engine_gait_features.py, engine_classifiers.py).
+                 Model: runs/identify/engine/models/deploy_all5_v5n/
   -> outputs in runs/live/ (see the end of this README)
+Without the boards: tracking_streamed.py (main stream) and identification_streamed.py (section 6)
 ```
 
 | folder | what it holds | open first |
 |---|---|---|
 | `firmware/` | the change to Espressif's esp-csi that the four boards run | `esp-csi.patch` |
-| `pipeline/io/` | serial capture, CSI line parsing, finding the boards, 2 s windows | `capture_logger.py`, `parse.py`, `identify_board.py` |
-| `pipeline/live/` | the app: the commands, the board runs, the tracking session, the screen, identification | `frozen_model.py`, `final_model.py`, `tracking.py` |
-| `pipeline/constrained/` | the tracker: the twelve lines, the networks, the decoder | `paths.py`, `nets.py`, `decoder.py` |
-| `pipeline/identify/` | the identification engine and its gait features | `engine.py`, `common.py` |
+| `pipeline/io/RunLive/` | finding the boards, serial capture, CSI line parsing, cleaning, 2 s windows | `serial_capture.py`, `serial_parse_csi.py`, `board_identify.py` |
+| `pipeline/live/RunLive/` | the app: the commands, the start window, the board runs, the tracking session and screen, identification, the streamed runs | `main.py`, `start_dialog.py`, `tracking_model.py` |
+| `pipeline/constrained/RunLive/` | the tracker: the twelve lines, the networks, the decoder, the display rules | `twelve_lines.py`, `network_shared.py`, `decoder_semi_bounded.py` |
+| `pipeline/identify/RunLive/` | the identification engine, its gait features and its classifiers | `identification_engine.py`, `engine_gait_features.py` |
 | `runs/public_model/` | the frozen tracker, the receivers' MACs, the identification files' hashes | `tracking/f05_A3/meta.json`, `boards.json`, `identification_hashes.txt` |
 | `runs/identify/` | the identification model and its five fold models (every file in git); the identification recordings' order for a replay | `engine/models/deploy_all5_v5n/manifest.json` |
 | `videos/` | the app's screens replayed on the recorded session B2 (PA1 to PA6) | `B2 Tracking walks/`, `B2 Identification walks/` |
@@ -70,14 +74,13 @@ shasum -a 256 -c runs/public_model/identification_hashes.txt
 | RX2 | (-0.5, 2.5) |
 | RX3 | (5.5, 2.5) |
 
-Both tasks use these positions; nothing moves between them. `identify --layout id_spot`, with RX2 moved to (2.0, -0.5)
-beside the TX, is only for the geometry test. The TX needs only power; the receivers plug into the Mac. Write your receivers' MAC addresses (printed by
-`python3 -m pipeline.io.identify_board`) into `runs/public_model/boards.json`.
+Both tasks use these positions; nothing moves between them. The TX needs only power; the receivers plug into the Mac. Write your receivers' MAC addresses (printed by
+`python3 -m pipeline.io.RunLive.board_identify`) into `runs/public_model/boards.json`.
 
 ## 3. The app: one command
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.frozen_model app
+OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.RunLive.main app
 ```
 
 A start dialog asks for the task, **Tracking** or **Identification** (identification needs no room: the model weighs
@@ -92,22 +95,22 @@ stops if a line fails) and starts tracking (`--baseline <folder>` reuses an earl
 record 60 s of the empty room (nobody moves), then check everything:
 
 ```
-NODES=$(OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.frozen_model ports)
+NODES=$(OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.RunLive.main ports)
 ```
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.io.capture_logger --duration 60 --out runs/live/baselines --nodes "$NODES" --reset --interval 10
+OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.io.RunLive.serial_capture --duration 60 --out runs/live/baselines --nodes "$NODES" --reset --interval 10
 ```
 ```
 BASE=$(ls -td runs/live/baselines/*/ | head -1)
 ```
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.frozen_model preflight --baseline "$BASE"
+OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.RunLive.main preflight --baseline "$BASE"
 ```
 
 Every line must read `ok`. Then run tracking:
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.frozen_model track --baseline "$BASE"
+OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.RunLive.main track --baseline "$BASE"
 ```
 
 When it prints READY, click on the Terminal (the keys are read there), stand still for 10 s, press SPACE once as each
@@ -118,7 +121,7 @@ walk starts at its start tape, and press q to stop.
 Started from the app, identification runs:
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.frozen_model identify --popup
+OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.RunLive.main identify --popup
 ```
 
 Walks can be on any of the twelve paths. A map of the twelve paths opens beside the identification window. Before each
@@ -137,7 +140,7 @@ feature components read the receivers' 107 bins, and each packet is divided by i
 features are taken, and the Doppler contours' percentile crossing is interpolated inside its bin. The three
 CNN components are v5s's, on the raw amplitude. `hgb_pace_prior` reads its standardiser from `state_rf_pace_prior.pkl`.
 The model's `manifest.json` names the five components in its `v5s` field, and its `v5n` field selects the v5n feature
-path in `pipeline/identify/engine.py`. The feature components carry the weight 1 on every walk in every room, so the
+path in `pipeline/identify/RunLive/identification_engine.py`. The feature components carry the weight 1 on every walk in every room, so the
 engine takes no room.
 
 ## 6. Run the thesis code on the recorded data
@@ -169,27 +172,27 @@ the line parser and the rig's consumer; only the packet source is replaced) to t
 Each walk's recorded start press is given as a SPACE at its recorded time:
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.frozen_model app --task tracking --stream B2/participant_PA5_walk
+OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.RunLive.main app --task tracking --stream B2/participant_PA5_walk
 ```
 
 `--stream <session>/<stem>`: the session is A1, A2, A3, B1 or B2, and the stem is a recording's name without its
 `.gt.json` (list them with `ls data/room_B/session_B2/*.gt.json`). A recording takes about 6 minutes and plays in real
 time only. The frozen tracker was trained on A1, A2 and B1, so A3 and B2 are the sessions it never saw. The run writes
 `runs/live/stream/<session>__<stem>/`: `log.jsonl` (every output), `summary.json` and `capture/` (the packets and presses
-as the app received them). `python3 -m pipeline.live.frozen_model stream --stream B2/participant_PA5_walk --no-window`
+as the app received them). `python3 -m pipeline.live.RunLive.main stream --stream B2/participant_PA5_walk --no-window`
 runs it without the window.
 
 **Identification.** A session's walks are decided by the fold model that never saw that session
 (`runs/identify/engine/models/loso_<session>_v5n`). Streamed through the live app with its window:
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.identify_engine rig --source recorded --session B2 --screen --speed max
+OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.RunLive.identification_app rig --source recorded --session B2 --screen --speed max
 ```
 
 (`--speed 1` plays in real time.) Every walk decided as fast as the CPU allows, without a window:
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.identify_engine replay-identify --session B2
+OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.RunLive.identification_app replay-identify --session B2
 ```
 
 Each writes one line per decision to `runs/live/identify/` (`rig_recorded_B2_<date>_<time>.jsonl` or

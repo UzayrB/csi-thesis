@@ -1,3 +1,3 @@
 # Author: Uzayr Ballim
 # Debugger: Claude
-# What the file does: The identification package.
+# What the file does: Identification from one key press.
