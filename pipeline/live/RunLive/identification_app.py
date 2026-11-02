@@ -1,6 +1,6 @@
 # Author: Uzayr Ballim
 # Debugger: Claude
-# What the file does: The identification app: loads the model, starts the helper processes that work out features, shows the...
+# What the file does: The identification app: loads the model, starts the helper processes that work out features, shows the one...
 
 from __future__ import annotations
 
@@ -20,10 +20,15 @@ CHUNK_S = 0.25
 DIR_WORD = {"A_fwd": "away", "A_rev": "towards"}
 
 
-# P1 to P6 -> the participants' names.
+# P1 to P6 (the model's classes) -> the report's participant codes, PA1 to PA6: what the app shows and...
 def code_names() -> dict:
-    from pipeline.identify.RunLive.engine_session_replay import SIX, anon
-    return {anon(n): n for n in SIX}
+    from pipeline.constrained.RunLive.shared_settings import PA_OF_CLASS
+    return dict(PA_OF_CLASS)
+
+
+# The positions of labels sorted PA1 to PA6, so every chart reads in the report's order.
+def pa_order(labels: list) -> np.ndarray:
+    return np.array(sorted(range(len(labels)), key=lambda i: (int(labels[i][2:]) if str(labels[i])[2:].isdigit() else 99, i)))
 
 
 # Function model dir.
@@ -743,7 +748,9 @@ class EngineScreen:
         if d is None:
             bx.axis("off")
             cx.axis("off")
-            if st.get("popup"):
+            if st.get("message"):
+                msg = st["message"]
+            elif st.get("popup"):
                 msg = ("pick the walk's path on the map window (one click),\nthen press SPACE in the Terminal as the walker "
                        "starts\n(a / t: line A, away from / towards the TX)")
             elif st.get("dmode", "detected") == "detected":
@@ -766,10 +773,11 @@ class EngineScreen:
         conf = d["confidence"]
         k = int(np.argmax(d["ensemble"]))
         r = int(np.argsort(-d["ensemble"])[1])
-        cols = ["tab:blue" if i == k else "0.7" for i in range(6)]
-        bx.bar(np.arange(6), conf, color=cols)
+        order = pa_order(label)
+        cols = ["tab:blue" if i == k else "0.7" for i in order]
+        bx.bar(np.arange(6), np.asarray(conf)[order], color=cols)
         bx.axhline(1 / 6, color="red", ls="--", lw=1, label="chance 1 in 6")
-        bx.set_xticks(np.arange(6), label)
+        bx.set_xticks(np.arange(6), [label[i] for i in order])
         bx.set_ylim(0, 1)
         bx.legend(fontsize=8, loc="upper right")
         bx.set_title(f"this walk: {label[k]} ({conf[k]:.2f}), runner-up {label[r]} ({conf[r]:.2f})", fontsize=11)
@@ -780,9 +788,9 @@ class EngineScreen:
         extra = st["round_trip"] if st["round_trip"] is not None else (d["tally"]["logp"] if d.get("tally") else None)
         if extra is not None:
             p = np.exp(extra)
-            cx.bar(np.arange(6), p, color="tab:purple")
+            cx.bar(np.arange(6), np.asarray(p)[order], color="tab:purple")
             cx.axhline(1 / 6, color="red", ls="--", lw=1)
-            cx.set_xticks(np.arange(6), label, fontsize=8)
+            cx.set_xticks(np.arange(6), [label[i] for i in order], fontsize=8)
             cx.set_ylim(0, 1)
             cx.set_title("round trip (away + towards)" if st["round_trip"] is not None else f"{d['tally']['k']} walks (this walker)", fontsize=9)
         else:
@@ -970,6 +978,196 @@ class PathPopup:
             subprocess.Popen(["open", "-a", app], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+# The live identification window: one window for every walk, in three stages.
+class IdentifyWindow(EngineScreen):
+
+    # Sets up the object.
+    def __init__(self, headless: bool = False, layout: str = "home", paths: dict = None, focus_back: bool = None,
+                 clock=None):
+        super().__init__(headless=headless, layout=layout)
+        from matplotlib.widgets import Button
+        self.paths = dict(paths or screen_paths())
+        self.lanes = {nm: lane_of(nm, self.paths) for nm in self.paths}
+        self.clock = clock or time.monotonic
+        self.focus_back = (not headless) if focus_back is None else bool(focus_back)
+        self.phase = "choose"
+        self.picked = None
+        self.ready = None
+        self.history = []
+        self.ignored = 0
+        self.decided = None
+        self._n0 = 0
+        if not headless and self.fig.canvas.manager:
+            self.fig.canvas.manager.set_window_title("identification")
+        self.mx = self.fig.add_axes([0.03, 0.06, 0.50, 0.80])
+        self.mtext = self.fig.add_axes([0.58, 0.30, 0.40, 0.56])
+        self.mtext.axis("off")
+        self.done_ax = self.fig.add_axes([0.62, 0.10, 0.26, 0.11])
+        self.next_ax = self.fig.add_axes([0.72, 0.90, 0.26, 0.07])
+        self.done_btn = Button(self.done_ax, "Done")
+        self.next_btn = Button(self.next_ax, "Next identification walk", color="#cfe8cf", hovercolor="#a8d8a8")
+        self.done_btn.on_clicked(lambda _ev: self.done())
+        self.next_btn.on_clicked(lambda _ev: self.next_walk())
+        self.art = {}
+        self._build_map()
+        self.fig.canvas.mpl_connect("button_press_event", self._click)
+        self._page()
+        self._restyle()
+
+    # Function build map.
+    def _build_map(self) -> None:
+        from matplotlib.patches import FancyArrowPatch
+        ax = self.mx
+        for g in np.arange(0, 5.001, 1.0):
+            ax.axhline(g, color="0.93", lw=0.6, zorder=0)
+            ax.axvline(g, color="0.93", lw=0.6, zorder=0)
+        for nm, (a, b) in self.lanes.items():
+            s, e = path_arrow(a, b, inset=0.15)
+            arr = FancyArrowPatch(s, e, arrowstyle="-|>", mutation_scale=16, lw=1.6, color="0.6", zorder=2)
+            ax.add_patch(arr)
+            u = (np.asarray(e) - np.asarray(s)) / max(float(np.hypot(*(np.asarray(e) - np.asarray(s)))), 1e-9)
+            lab = ax.text(*(np.asarray(a) - 0.34 * u), nm, ha="center", va="center", fontsize=8, color="0.35", zorder=3)
+            self.art[nm] = (arr, lab)
+        from pipeline.identify.RunLive import identification_engine as EN
+        rx2 = tuple(EN._rigs()[self.layout]["RX2"])
+        where = {"TX": ((2.5, -0.5), (14, -3), "left"), "RX1": ((2.5, 5.5), (14, -3), "left"),
+                 "RX2": (rx2, (0, -14), "center"), "RX3": ((5.5, 2.5), (0, 8), "center")}
+        for nm, ((x, y), off, ha) in where.items():
+            ax.plot(x, y, "^", color="tab:purple", ms=7)
+            ax.annotate(nm, (x, y), textcoords="offset points", xytext=off, ha=ha, fontsize=8, color="tab:purple")
+        ax.set_xlim(-1.0, 6.0)
+        ax.set_ylim(-1.0, 6.0)
+        ax.set_aspect("equal")
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    # The path drawn nearest to (x, y) on the grid, within POPUP_PICK_M, or None.
+    def pick(self, x: float, y: float):
+        return PathPopup.pick(self, x, y)
+
+    # Function click.
+    def _click(self, ev) -> None:
+        if ev.inaxes is not self.mx or ev.xdata is None:
+            return
+        nm = self.pick(ev.xdata, ev.ydata)
+        if nm is not None:
+            self.choose(nm)
+
+    # A click on the map: the path it picks is highlighted (the map only takes clicks while it is shown).
+    def choose(self, path: str) -> bool:
+        if path not in self.paths:
+            raise ValueError(f"{path!r} is not one of the tracking paths {sorted(self.paths)}")
+        if self.phase != "choose":
+            self.ignored += 1
+            return False
+        self.picked = path
+        self._restyle()
+        self._show()
+        return True
+
+    # Done: the picked path is the walk's path; the result page waits for SPACE in the Terminal.
+    def done(self) -> bool:
+        if self.phase != "choose" or self.picked is None:
+            print("IDENTIFICATION: click the walk's path on the map first, then Done.", flush=True)
+            return False
+        self.ready = (float(self.clock()), self.picked)
+        self.history.append(self.ready)
+        self.phase = "ready"
+        print(f"IDENTIFICATION: walk {self.picked}. Press SPACE in the Terminal as the walker starts.", flush=True)
+        if self.focus_back:
+            PathPopup._focus_terminal()
+        return True
+
+    # A SPACE at time t: the walk's path when the window is waiting and Done came before the key, else None.
+    def take(self, t: float):
+        if self.phase == "ready" and self.ready is not None and self.ready[0] <= float(t):
+            return self.ready[1]
+        return None
+
+    # Function refusal.
+    def refusal(self) -> str:
+        return {"choose": "SPACE refused: click the walk's path on the map and press Done first.",
+                "walk": "SPACE refused: a walk is in progress; wait for its result.",
+                "result": "SPACE refused: press Next identification walk on the screen first."}.get(
+                    self.phase, "SPACE refused: it came before Done; press it again as the walker starts.")
+
+    # A press was given (SPACE after Done, or a / t): the walk is in progress.
+    def walk_started(self, path: str, t: float, n_decisions: int) -> None:
+        self.ready = (float(t), path)
+        self.phase = "walk"
+        self._n0 = int(n_decisions)
+
+    # The walk's windows are all closed: its result (or that it gave none) and the Next button.
+    def walk_ended(self, n_decisions: int) -> None:
+        self.decided = int(n_decisions) > self._n0
+        self.phase = "result"
+
+    # Next identification walk: back to the map, the last path still highlighted.
+    def next_walk(self) -> bool:
+        if self.phase != "result":
+            return False
+        self.phase, self.ready = "choose", None
+        self._restyle()
+        return True
+
+    # Function page.
+    def _page(self) -> None:
+        on_map = self.phase == "choose"
+        for x in (self.mx, self.mtext, self.done_ax):
+            x.set_visible(on_map)
+        for x in (self.ax, self.bx, self.cx, self.tx):
+            x.set_visible(not on_map)
+        self.next_ax.set_visible(self.phase == "result")
+        if on_map:
+            self.caption.set_text("")
+
+    # Function restyle.
+    def _restyle(self) -> None:
+        for nm, (arr, lab) in self.art.items():
+            on = nm == self.picked
+            arr.set_color("tab:green" if on else "0.6")
+            arr.set_linewidth(3.4 if on else 1.6)
+            arr.set_zorder(4 if on else 2)
+            lab.set_color("tab:green" if on else "0.35")
+            lab.set_fontweight("bold" if on else "normal")
+        ok = self.picked is not None
+        self.done_btn.label.set_text(f"Done: walk {self.picked}" if ok else "Done (pick a path first)")
+        self.done_btn.color = "#cfe8cf" if ok else "0.9"
+        self.done_btn.hovercolor = "#a8d8a8" if ok else "0.9"
+        self.done_ax.set_facecolor(self.done_btn.color)
+
+    # Function draw.
+    def draw(self, st: dict, now: float = None) -> None:
+        self._page()
+        if self.phase == "choose":
+            self.header.set_text("IDENTIFICATION: pick the next walk's path")
+            self.mtext.clear()
+            self.mtext.axis("off")
+            k_, n_ = st.get("score") or (0, 0)
+            lines = ["1.  Click the walk's path on the map",
+                     "     (one click gives the line and the direction).",
+                     "2.  Press Done.",
+                     "3.  Press SPACE in the Terminal as the walker starts.", "",
+                     f"picked: {self.picked}" if self.picked else "picked: nothing yet", "",
+                     f"model: {st['model']}", f"adapting to this room: {st['walks_seen']} walks seen"]
+            if n_:
+                lines.append(f"correct {k_} of {n_} ({100 * k_ / n_:.1f} %), chance 16.7 %")
+            self.mtext.text(0, 1, "\n".join(lines), va="top", fontsize=11)
+            self._show()
+            return
+        st = dict(st, popup=True, next_path=self.ready[1] if self.ready else None, map_open=False)
+        if self.phase == "ready":
+            st.update(last=None, message=f"walk: {self.ready[1]}\n\npress SPACE in the Terminal as the walker starts")
+        elif self.phase == "walk":
+            st.update(last=None, message=f"walk: {self.ready[1]}\n\nlistening: walk in progress ...")
+        elif self.phase == "result" and not self.decided:
+            st.update(last=None, message="no decision for this walk (a receiver was silent)\n\n"
+                                         "press Next identification walk")
+        super().draw(st, now)
+        self._page()
+        self._show()
+
+
 
 # Run_capture's extra consumer, and the recorded source's: frames in, keys on the same clock, the engine...
 class EngineConsumer:
@@ -1086,6 +1284,14 @@ class EngineConsumer:
                 route = self.routes.get(float(ev.t_mono))
                 if route is not None:
                     self.app.press(ev.t_mono, path=route, source="known route")
+                elif isinstance(self.popup, IdentifyWindow):
+                    path = self.popup.take(float(ev.t_mono))
+                    if path is None:
+                        self.refused += 1
+                        print(self.popup.refusal(), flush=True)
+                    else:
+                        self.app.press(ev.t_mono, path=path, source=POPUP_SOURCE)
+                        self.popup.walk_started(path, float(ev.t_mono), len(self.app.decisions))
                 elif self.popup is not None:
                     path = self.popup.path_at(float(ev.t_mono))
                     if path is None:
@@ -1099,6 +1305,14 @@ class EngineConsumer:
                 else:
                     self.refused += 1
                     print(SPACE_REFUSED, flush=True)
+            elif ev.key in ("a", "t") and isinstance(self.popup, IdentifyWindow):
+                path = "A_fwd" if ev.key == "a" else "A_rev"
+                if self.popup.phase in ("choose", "ready"):
+                    self.app.press(ev.t_mono, path=path, source="key")
+                    self.popup.walk_started(path, float(ev.t_mono), len(self.app.decisions))
+                else:
+                    self.refused += 1
+                    print(self.popup.refusal().replace("SPACE", ev.key), flush=True)
             elif ev.key in ("a", "t"):
                 path = "A_fwd" if ev.key == "a" else "A_rev"
                 self.app.press(ev.t_mono, path=path, source="key")
@@ -1111,18 +1325,24 @@ class EngineConsumer:
     # The path pop-up opens again once no walk is open (the last decision is out), the last path still picked.
     def _popup_tick(self) -> None:
         p = self.popup
-        if p is not None and p.locked and not getattr(getattr(self.app, "e", None), "open_windows", 0):
+        open_now = getattr(getattr(self.app, "e", None), "open_windows", 0)
+        if isinstance(p, IdentifyWindow):
+            if p.phase == "walk" and not open_now:
+                p.walk_ended(len(self.app.decisions))
+        elif p is not None and p.locked and not open_now:
             p.reopen()
 
     # Engine v5: what the screen shows, beyond the clock: the last decision, the walks seen, whether a walk is...
     def _seen(self, st: dict) -> tuple:
         return (None if st["last"] is None else st["last"]["t0"], st["walks_seen"], bool(st["open"]), tuple(st["score"]),
-                st["stream"], st.get("next_path"), st.get("map_open"))
+                st["stream"], st.get("next_path"), st.get("map_open"), st.get("phase"), st.get("picked"))
 
     # The app's state for the screen, with the path pop-up's pick and whether its map is open.
     def _state(self) -> dict:
         st = self.app.state()
-        if self.popup is not None:
+        if isinstance(self.popup, IdentifyWindow):
+            st.update(popup=True, phase=self.popup.phase, picked=self.popup.picked)
+        elif self.popup is not None:
             st.update(popup=True, next_path=self.popup.chosen, map_open=not self.popup.locked)
         return st
 
@@ -1142,7 +1362,7 @@ class EngineConsumer:
         elif now - self.last_draw >= 0.1:
             self.last_draw = now
             self.screen.pump()
-            if self.popup is not None:
+            if self.popup is not None and self.popup is not self.screen:
                 self.popup.pump()
 
     # Now is the stream's time: run_capture passes the host's time.monotonic() (the clock of t_mono and of the...
@@ -1241,16 +1461,19 @@ def cmd_rig(a) -> int:
     nodes = mapping_by_mac(identify(), room_a_macs(os.path.join(REPO_ROOT, "data")))
     nodes = {k: v for k, v in nodes.items() if k in ("RX1", "RX2", "RX3")}
     steps.done(", ".join(f"{k} on {v}" for k, v in sorted(nodes.items())))
-    steps.step("Opening the identification window" + (" and the path map" if popup else ""))
-    c = EngineConsumer(app, EngineScreen(headless=False, layout=layout))
+    steps.step("Opening the identification window")
     if popup:
-        c.popup = PathPopup(headless=False, focus_back=not a.no_focus_return)
+        win = IdentifyWindow(headless=False, layout=layout, focus_back=not a.no_focus_return)
+        c = EngineConsumer(app, win)
+        c.popup = win
+    else:
+        c = EngineConsumer(app, EngineScreen(headless=False, layout=layout))
     steps.done()
     rig_banner(["READY.",
                 "Click on THIS Terminal window: the keys are read here, not in the plot window.",
-                ("Before each walk, click its path on the map window (one click: line and direction); then SPACE here as "
-                 "the walker starts. The map opens again after each decision with the last path picked, so a repeat is one "
-                 "SPACE. a / t = line A (away from / towards the TX); n = a new walker; q quits." if popup else
+                ("In the identification window: click the walk's path on the map, then Done. Then press SPACE here as the "
+                 "walker starts. After the result, Next identification walk goes back to the map (the last path stays "
+                 "picked). a / t = line A (away from / towards the TX); n = a new walker; q quits." if popup else
                  "a (away from the TX) or t (towards it) once as each walker starts on line A; n = a new walker; q quits."),
                 "Keep the plot window visible during a walk (a hidden window can be slowed by macOS)."])
     rc = run(c, nodes, duration=a.minutes * 60.0 if a.minutes else None, mode="identify", stem=stem,

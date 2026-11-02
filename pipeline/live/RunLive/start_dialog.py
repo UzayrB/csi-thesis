@@ -46,10 +46,20 @@ def build_dialog(headless: bool = False):
 
 # The start dialog, shown until Start or Cancel: {"task"}, or None when cancelled or closed.
 def dialog():
+    import json
+    r = subprocess.run([sys.executable, "-c", "from pipeline.live.RunLive.start_dialog import show_dialog; show_dialog()"],
+                       cwd=REPO_ROOT, env=dict(os.environ, PYTHONPATH=REPO_ROOT), stdout=subprocess.PIPE, text=True)
+    picked = [ln for ln in r.stdout.splitlines() if ln.startswith("{")]
+    return (json.loads(picked[-1]) if picked else {}) or None
+
+
+# The start dialog's own process: the window until Start or Cancel, then the choice as one JSON line.
+def show_dialog() -> None:
+    import json
     import matplotlib.pyplot as plt
     fig, choice, _w = build_dialog()
     plt.show(block=True)
-    return dict(choice) or None
+    print(json.dumps(dict(choice)), flush=True)
 
 
 

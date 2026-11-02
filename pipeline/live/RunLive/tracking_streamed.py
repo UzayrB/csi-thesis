@@ -14,6 +14,8 @@ import types
 
 import numpy as np
 
+from pipeline.constrained.RunLive.shared_settings import name_text, pa_text
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 J = os.path.join
 OUT = J(REPO_ROOT, "runs", "live", "stream")
@@ -100,8 +102,8 @@ def load_recording(session: str, stem: str):
     if not os.path.isdir(sdir):
         raise SystemExit(NO_DATA)
     if not os.path.exists(J(sdir, f"{stem}.gt.json")):
-        stems = sorted(f[:-8] for f in os.listdir(sdir) if f.endswith(".gt.json"))
-        raise SystemExit(f"REFUSED: {session} has no recording {stem!r}; its recordings: {', '.join(stems)}")
+        stems = sorted(pa_text(f[:-8]) for f in os.listdir(sdir) if f.endswith(".gt.json"))
+        raise SystemExit(f"REFUSED: {session} has no recording {pa_text(stem)!r}; its recordings: {', '.join(stems)}")
     frames = {n: read_capture_file(J(sdir, f"{stem}_{n}.bin"))[1] for n in NODES}
     with open(J(sdir, f"{stem}.gt.json"), encoding="utf-8") as f:
         sidecar = json.load(f)
@@ -158,10 +160,11 @@ def stream(session: str, stem: str, speed: float = 1.0, window: bool = True, scr
     from pipeline.live.RunLive.tracking_session import Logger
     from pipeline.live.RunLive.boards_run import TrackingConsumer
     folder = folder or FZ.TRACKER
+    shown, stem = pa_text(stem), name_text(stem)
     sdir, frames, sidecar = load_recording(session, stem)
     base_dir = W.baseline_dir_for(sdir, stem)
     t_rec_host = min(float(frames[n]["t_host"][0]) for n in NODES)
-    print(f"STREAMED TRACKING: {session}/{stem}, {len(sidecar['passes'])} walks, speed {speed:g}, on the CPU", flush=True)
+    print(f"STREAMED TRACKING: {session}/{shown}, {len(sidecar['passes'])} walks, speed {speed:g}, on the CPU", flush=True)
     chk = stream_preflight(base_dir, t_rec_host, folder)
     for k, v in chk.items():
         print(f"  {'ok  ' if v else 'FAIL'} {k}", flush=True)
@@ -171,7 +174,7 @@ def stream(session: str, stem: str, speed: float = 1.0, window: bool = True, scr
     if CODES[session] in built["meta"]["train"]:
         print(f"NOTE: the frozen tracker was trained on {session}; A3 and B2 are the sessions it never saw", flush=True)
     print("Loading the tracking model and building the replay ports (about a minute)", flush=True)
-    s = FZ.session(built, session="live", stem=stem, baseline=W.session_baseline(base_dir))
+    s = FZ.session(built, session="live", stem=shown, baseline=W.session_baseline(base_dir))
     log = Logger(s)
     t_rec0 = min(float(frames[n]["t_mono"][0]) for n in NODES)
     t_rec1 = max(float(frames[n]["t_mono"][-1]) for n in NODES)
@@ -196,9 +199,9 @@ def stream(session: str, stem: str, speed: float = 1.0, window: bool = True, scr
     scr = None
     if screen_dir or window:
         from pipeline.live.RunLive.tracking_screen import Screen
-        scr = Screen(s.st, headless=bool(screen_dir), title=f"streamed run: {session}/{stem} (q in the Terminal stops)")
+        scr = Screen(s.st, headless=bool(screen_dir), title=f"streamed run: {session}/{shown} (q in the Terminal stops)")
         if screen_dir:
-            grab[0] = Grabber(scr, J(screen_dir, f"stream_{session}_{stem}.mp4"))
+            grab[0] = Grabber(scr, J(screen_dir, f"stream_{session}_{shown}.mp4"))
     con = Consumer(s, scr)
     sys.modules["serial"] = serial_module({f"replay://{n}": ports[n] for n in NODES})
     t_wall0 = time.monotonic() + 2.0
@@ -216,7 +219,7 @@ def stream(session: str, stem: str, speed: float = 1.0, window: bool = True, scr
             con.keys.put(KeyEvent(key=" ", t_mono=time.monotonic(), t_host=time.time()))
     threading.Thread(target=inject, daemon=True).start()
     print("STREAMING: the walks start as recorded; q in this Terminal stops", flush=True)
-    d = J(OUT, f"{session}__{stem}")
+    d = J(OUT, f"{session}__{shown}")
     cap_dir = J(d, "capture")
     os.makedirs(cap_dir, exist_ok=True)
     states, stop_keys = {}, threading.Event()
@@ -224,8 +227,8 @@ def stream(session: str, stem: str, speed: float = 1.0, window: bool = True, scr
     with KeyReader(QuitOnly(con.keys), stop_keys):
         rc = run_capture({n: f"replay://{n}" for n in NODES}, duration=1.0 + (t_rec1 - t_rec0) / speed + 3.0,
                          extra_consumers=[con], stop_when=con.stop.is_set, quiet_monitor=True, states_out=states,
-                         out_dir=cap_dir, timestamped_subdir=False, writer_prefix=f"{stem}_",
-                         run_config={"stream": f"{session}/{stem}", "speed": speed, "tracker": os.path.relpath(folder, REPO_ROOT)})
+                         out_dir=cap_dir, timestamped_subdir=False, writer_prefix=f"{shown}_",
+                         run_config={"stream": f"{session}/{shown}", "speed": speed, "tracker": os.path.relpath(folder, REPO_ROOT)})
     log.event(time.monotonic())
     s.close()
     log.finish()
@@ -237,7 +240,7 @@ def stream(session: str, stem: str, speed: float = 1.0, window: bool = True, scr
     lag = [max(0.0, float(r["computed_at"]) - float(r["x"])) for r in dots if r["computed_at"] is not None]
     ws = [x for x, prov in s.timing["window_s"] if not prov]
     q = lambda v, p: float(np.percentile(v, p)) if v else None
-    summ = {"session": session, "stem": stem, "speed": speed, "exit": rc, "delta_s": delta,
+    summ = {"session": session, "stem": shown, "speed": speed, "exit": rc, "delta_s": delta,
             "tracker": os.path.relpath(folder, REPO_ROOT), "wall_minutes": round((time.time() - t_start) / 60.0, 2),
             "n_presses_injected": len(presses), "n_committed": len(s.decisions), "n_locks": len(log.locks),
             "n_frames": len(dots),
@@ -255,8 +258,8 @@ def stream(session: str, stem: str, speed: float = 1.0, window: bool = True, scr
     got = [float(p_["press"]) for _pid, p_ in sorted(s.passes.items())]
     for p_, t in zip(sorted(sc["passes"], key=lambda q: q["t_start"]), got):
         p_["t_start"] = t
-    with open(J(cap_dir, f"{stem}.gt.json"), "w", encoding="utf-8") as f:
-        json.dump(sc, f)
+    with open(J(cap_dir, f"{shown}.gt.json"), "w", encoding="utf-8") as f:
+        f.write(pa_text(json.dumps(sc)))
     with open(J(d, "log.jsonl"), "w", encoding="utf-8") as f:
         for r in log.rows:
             f.write(json.dumps(r, default=float) + "\n")
@@ -265,7 +268,7 @@ def stream(session: str, stem: str, speed: float = 1.0, window: bool = True, scr
     walks = [r for r in log.rows if r["kind"] == "committed"]
     print(f"DONE: {len(walks)} walks committed, {len(log.locks)} locks; {os.path.relpath(d, REPO_ROOT)}/", flush=True)
     for r in walks:
-        t = (s.truth or {}).get(f"live|{stem}|{int(r['pid'])}") if hasattr(s, "truth") else None
+        t = (s.truth or {}).get(f"live|{shown}|{int(r['pid'])}") if hasattr(s, "truth") else None
         print(f"  walk {int(r['pid']):2d}: {r['line']}" + (f" (walked {t['path_name']})" if t and t.get("path_name") else ""),
               flush=True)
     return summ

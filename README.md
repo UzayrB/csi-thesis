@@ -26,7 +26,7 @@ ESP32 receivers over USB
                  constrained/RunLive/network_*.py -> tracking_start_of_walk.py -> tracking_line_decision.py
                  (constrained/RunLive/decoder_*.py) -> tracking_display.py -> tracking_screen.py draws it.
                  Model: runs/public_model/tracking/f05_A3/
-       identify  identification_on_boards.py -> identification_app.py (the path map and the result window) ->
+       identify  identification_on_boards.py -> identification_app.py (one window: the path map, Done, the result) ->
                  identify/RunLive/identification_engine.py (engine_gait_features.py, engine_classifiers.py).
                  Model: runs/identify/engine/models/deploy_all5_v5n/
   -> outputs in runs/live/ (see the end of this README)
@@ -124,15 +124,19 @@ Started from the app, identification runs:
 OMP_NUM_THREADS=1 PYTHONPATH=. python3 -m pipeline.live.RunLive.main identify --popup
 ```
 
-Walks can be on any of the twelve paths. A map of the twelve paths opens beside the identification window. Before each
-walk, click its path on the map (one click gives its line and direction), then press SPACE in the Terminal as the walker
-starts. After a click the keyboard goes back to the Terminal (Terminal, iTerm or VS Code); otherwise click on the Terminal
-first. The map takes no clicks during a walk and opens again after each decision with the last path still picked, so
-repeating a path is one SPACE. SPACE with no path picked is refused. `a` and `t` still start a line-A walk (away from or
-towards the TX), `n` marks a new person and q stops. The path is given rather than detected: the engine's direction
-detector covers line A only, and with RX2 at its tracking position it is right on 90.83 % of 120 line-A walks (96.9 % of
-419 with RX2 beside the transmitter), below its 95 % rule. Without `--popup`, only `a` and `t` (line A) start a walk. It
-runs on the Apple GPU.
+Walks can be on any of the twelve paths. One window opens, and every walk goes through it in three steps:
+
+1. The map of the twelve paths: click the walk's path (one click gives its line and direction), then press **Done**.
+2. The window waits: press SPACE in the Terminal as the walker starts. After Done the keyboard goes back to the Terminal
+   (Terminal, iTerm or VS Code); otherwise click on the Terminal first. SPACE counts only after Done, once per Done.
+3. The result. **Next identification walk** goes back to the map with the last path still picked, so repeating a path
+   is Done, then SPACE.
+
+SPACE before Done, during a walk or on a result is refused, with what to press instead. `a` and `t` start a line-A walk
+(away from or towards the TX) from the map or the waiting page, `n` marks a new person and q stops. The path is given
+rather than detected: the engine's direction detector covers line A only, and with RX2 at its tracking position it is
+right on 90.83 % of 120 line-A walks (96.9 % of 419 with RX2 beside the transmitter), below its 95 % rule. Without
+`--popup`, only `a` and `t` (line A) start a walk. It runs on the Apple GPU.
 
 The identification model is engine v5n. It has the five components of engine v5s (`lda_pace_prior`, `hgb_pace_prior`,
 `cnn`, `cnn_prior` and `cnn_perlink_prior`); the four forests of engine v5 are not shipped and never loaded. The two

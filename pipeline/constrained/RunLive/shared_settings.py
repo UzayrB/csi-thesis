@@ -13,6 +13,23 @@ ART_DIR = os.environ.get("TDR_ART_DIR") or os.path.join(REPO, "runs", "artefacts
 
 SIX = ("PA5", "PA1", "PA2", "PA3", "PA4", "PA6")
 
+PA_OF_CLASS = {"P1": "PA5", "P2": "PA1", "P3": "PA2", "P4": "PA3", "P5": "PA4", "P6": "PA6"}
+PA_OF = {n: PA_OF_CLASS[f"P{i + 1}"] for i, n in enumerate(SIX)}
+
+
+# S with every participant's name replaced by their report code (PA1 to PA6).
+def pa_text(s: str) -> str:
+    for n, c in PA_OF.items():
+        s = s.replace(n, c)
+    return s
+
+
+# The reverse, for finding a recording in data/: a stem given with report codes, as its files are named.
+def name_text(s: str) -> str:
+    for n, c in PA_OF.items():
+        s = s.replace(c, n)
+    return s
+
 E_REG, E_POST = 20, 24
 
 V_MEAN, V_SD, DT = 1.298, 0.123, 1.0

@@ -31,13 +31,14 @@ class RecordedSource:
     def __init__(self, session: str):
         from pipeline.identify.RunLive import engine_session_replay as RP
         from pipeline.identify.RunLive.engine_session_replay import anon
+        from pipeline.constrained.RunLive.shared_settings import PA_OF
         self.session = session
         self.recs = []
         for r in RP.session_recordings(session):
             gt = json.load(open(r["stem"] + ".gt.json", encoding="utf-8"))
             passes = sorted(gt["passes"], key=lambda q: q["t_start"])
-            self.recs.append({"stem": r["stem"], "kind": r["kind"], "block": r["block"], "name": r["name"],
-                              "code": anon(r["name"]), "label": f"{r['kind']}_{r['block']}_{r['name']}",
+            self.recs.append({"stem": r["stem"], "kind": r["kind"], "block": r["block"], "name": PA_OF[r["name"]],
+                              "code": anon(r["name"]), "label": f"{r['kind']}_{r['block']}_{PA_OF[r['name']]}",
                               "presses": [float(q["t_start"]) for q in passes],
                               "routes": [q["path_name"] for q in passes],
                               "layout": "id_spot" if r["kind"] == "idcap" else "home"})
@@ -46,7 +47,8 @@ class RecordedSource:
     def index_of(self, which: str) -> int:
         if which.isdigit():
             return int(which)
-        hits = [i for i, r in enumerate(self.recs) if which == r["label"] or which in r["stem"]]
+        from pipeline.constrained.RunLive.shared_settings import name_text
+        hits = [i for i, r in enumerate(self.recs) if which == r["label"] or name_text(which) in r["stem"]]
         if len(hits) != 1:
             raise SystemExit(f"--from {which!r} matches {len(hits)} recordings; labels: {[r['label'] for r in self.recs]}")
         return hits[0]
