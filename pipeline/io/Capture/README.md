@@ -7,7 +7,8 @@ every command from the repository root with `OMP_NUM_THREADS=1 PYTHONPATH=.` in 
 ## How a label is made
 
 1. Before a session, `identify_board.py` says which board is on each USB port, and `rt_calibration.py` measures the
-   operator's press delay against a marker crossing a line at walking speed (`configs/operator_rt.json`).
+   operator's press delay against a marker crossing a line at walking speed (a new file in `configs/` each time; the
+   logger uses the newest).
 2. `ground_truth.py` runs the capture (`capture_logger.py`, parsing each line with `parse.py`) and reads SPACE in the
    same process, so the CSI and the presses share one monotonic clock. The walker follows the plan from `anchors.py`:
    a press as the torso crosses each of the six taped crossings of a line, or as they settle on a grid cell. The press
@@ -29,7 +30,7 @@ presses by one fixed rule, in a copy under `runs/` (never in `data/`).
 | file | what it does | how it runs |
 |---|---|---|
 | `identify_board.py` | asks each USB port which board is on it (transmitter or receiver) and its MAC; read only | `python -m pipeline.io.Capture.identify_board` |
-| `rt_calibration.py` | the operator's reaction-time test, 25 presses at each of 1.0 and 1.4 m/s; writes `configs/operator_rt.json` | `python -m pipeline.io.Capture.rt_calibration` |
+| `rt_calibration.py` | the operator's reaction-time test, 25 presses at each of 1.0 and 1.4 m/s; writes a new `configs/operator_rt_<date>-<time>.json`, never overwriting one, and the logger uses the newest | `python -m pipeline.io.Capture.rt_calibration` |
 | `parse.py` | one `CSI_DATA` serial line into a checked record: MAC, RSSI, both clocks, the 256-byte channel payload (128 values) | imported by `capture_logger.py` |
 | `capture_logger.py` | one reader thread per receiver, the packet-rate and loss checks, the `.bin` files; on its own it records the 60 s empty-room baseline | `python -m pipeline.io.Capture.capture_logger --duration 60 --out <folder> --nodes <RX1=...,RX2=...,RX3=...> --reset` |
 | `anchors.py` | the twelve paths, each one's six taped crossings, start and end, the 25 grid cells and the session plan | `python -m pipeline.io.Capture.anchors` prints the paths |

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import math
 import os
@@ -28,6 +29,7 @@ APPROACH_MAX_M: float = 2.2
 LAPSE_THRESHOLD_S: float = 1.0
 
 DEFAULT_CONFIG_PATH: str = "configs/operator_rt.json"
+CONFIG_DIR: str = "configs"
 
 INTER_TRIAL_S: float = 0.7
 
@@ -192,7 +194,7 @@ def software_version() -> str:
     return "unknown"
 
 
-# Build the JSON document written to configs/operator_rt.json.
+# Build the JSON document written to a calibration file (configs/operator_rt_<date>-<time>.json).
 def result_to_config(result: CalibrationResult, operator: str = "", notes: str = "") -> dict:
     return {
         "bias_s": result.bias_s,
@@ -218,12 +220,32 @@ def result_to_config(result: CalibrationResult, operator: str = "", notes: str =
     }
 
 
-# Write the calibration to disk.
-def write_config(result: CalibrationResult, path: str = DEFAULT_CONFIG_PATH, operator: str = "", notes: str = "") -> str:
+# A new file for a new calibration, named for when it was made: configs/operator_rt_<date>-<time>.json.
+def new_config_path(config_dir: str = CONFIG_DIR) -> str:
+    return os.path.join(config_dir, f"operator_rt_{time.strftime('%Y%m%d-%H%M%S')}.json")
+
+
+# The newest calibration in config_dir (operator_rt.json or operator_rt_<date>-<time>.json), by the time it...
+def latest_config_path(config_dir: str = CONFIG_DIR) -> str:
+    best, best_t = DEFAULT_CONFIG_PATH, None
+    for p in glob.glob(os.path.join(config_dir, "operator_rt*.json")):
+        try:
+            with open(p, encoding="utf-8") as f:
+                t = float(json.load(f).get("timestamp_epoch") or os.path.getmtime(p))
+        except (OSError, ValueError, TypeError, AttributeError):
+            continue
+        if best_t is None or t > best_t:
+            best, best_t = p, t
+    return best
+
+
+# Write the calibration to a file of its own; an existing file is never overwritten.
+def write_config(result: CalibrationResult, path: str = None, operator: str = "", notes: str = "") -> str:
+    path = path or new_config_path()
     doc = result_to_config(result, operator=operator, notes=notes)
     parent = os.path.dirname(os.path.abspath(path))
     os.makedirs(parent, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    with open(path, "x", encoding="utf-8") as f:
         json.dump(doc, f, indent=2, sort_keys=True)
     return path
 
@@ -424,10 +446,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--trials-per-speed", type=int, default=TRIALS_PER_SPEED, help=f"trials at each speed (default: {TRIALS_PER_SPEED})")
     p.add_argument("--seed", type=int, default=None, help="plan seed (default: random, and recorded in the output)")
-    p.add_argument("--out", type=str, default=DEFAULT_CONFIG_PATH, help=f"where to write the calibration (default: {DEFAULT_CONFIG_PATH})")
+    p.add_argument("--out", type=str, default=None,
+                   help="where to write the calibration (default: a new configs/operator_rt_<date>-<time>.json); "
+                        "an existing file is never overwritten")
     p.add_argument("--operator", type=str, default="", help="operator code; never a name")
     p.add_argument("--notes", type=str, default="", help="free-text notes about the conditions")
-    p.add_argument("--dry-run", action="store_true", help="run synthetically with no terminal UI, to check the pipeline end to end")
+    p.add_argument("--dry-run", action="store_true",
+                   help="run synthetically with no terminal UI, to check the pipeline end to end; nothing is written")
     p.add_argument("--no-write", action="store_true", help="print the report but do not write the config")
     return p
 
@@ -435,6 +460,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
 # Entry point for python -m pipeline.io.Capture.rt_calibration.
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_arg_parser().parse_args(argv)
+    if args.out and os.path.exists(args.out):
+        print(f"REFUSED: {args.out} exists; a calibration is never overwritten. Leave out --out to write a new file.")
+        return 2
     seed = args.seed if args.seed is not None else random.randrange(1 << 30)
     plan = build_trial_plan(seed=seed, trials_per_speed=args.trials_per_speed)
 
@@ -474,12 +502,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"Consider repeating the calibration."
         )
 
-    if args.no_write:
-        print("\n--no-write given; config not written.")
+    if args.no_write or args.dry_run:
+        print(f"\n{'--dry-run' if args.dry_run else '--no-write'} given; config not written.")
         return 0
 
     path = write_config(result, args.out, operator=args.operator, notes=args.notes)
-    print(f"\nWrote {path} (plan seed {seed}).")
+    print(f"\nWrote {path} (plan seed {seed}). The ground-truth logger uses the newest calibration in {CONFIG_DIR}/.")
     return 0
 
 

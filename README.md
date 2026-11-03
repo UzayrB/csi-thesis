@@ -40,7 +40,7 @@ Without the boards: tracking_streamed.py (main stream) and identification_stream
 | `firmware/` | the change to Espressif's esp-csi that the four boards run | `esp-csi.patch` |
 | `pipeline/io/RunLive/` | finding the boards, serial capture, CSI line parsing, cleaning, 2 s windows | `serial_capture.py`, `serial_parse_csi.py`, `board_identify.py` |
 | `pipeline/io/Capture/` | how the recordings were made and labelled: the board check, the reaction-time test, the capture, the recording-day logger and its paths, the Room B identification captures, the press relabel, the labelled 2 s windows | `README.md`, `ground_truth.py`, `windows.py` |
-| `configs/` | the operator's reaction-time calibration, subtracted from every press in the recordings | `operator_rt.json` |
+| `configs/` | the operator's reaction-time calibration, subtracted from every press in the recordings (a new calibration is a new file beside it) | `operator_rt.json` |
 | `pipeline/live/RunLive/` | the app: the commands, the start window, the board runs, the tracking session and screen, identification, the streamed runs | `main.py`, `start_dialog.py`, `tracking_model.py` |
 | `pipeline/constrained/RunLive/` | the tracker: the twelve lines, the networks, the decoder, the display rules | `twelve_lines.py`, `network_shared.py`, `decoder_semi_bounded.py` |
 | `pipeline/identify/RunLive/` | the identification engine, its gait features and its classifiers | `identification_engine.py`, `engine_gait_features.py` |
@@ -226,3 +226,171 @@ Sections 0 to 5: flash the boards, place them, then run the app. A live run need
 
 `videos/` holds the app's own screens replayed on the recorded B2 session (participants as PA1 to PA6); the two
 identification sets show the engine v5n model.
+
+---
+
+## Recording more data, and training on it (a separate guide)
+
+Everything above runs the finished models. This part is separate: how the shared recordings in `data/` were made, step
+by step, if you want to record more, and then, in words, how the models were trained on them. The recording code is
+all in `pipeline/io/Capture/` (its `README.md` explains each file). Put `OMP_NUM_THREADS=1 PYTHONPATH=.` in front of
+every command, as above, and flash and place the boards as in sections 0 and 2. The examples record a new Room A
+session, `04`, and a new participant, `P07`, so nothing already in `data/` is touched (the logger also refuses to
+overwrite a recording).
+
+### Before the first recording
+
+1. Which board is on each USB port, and its MAC. With new boards, put the three receivers' MACs in
+   `runs/public_model/boards.json`, which is how the next command finds them:
+
+   ```
+   OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.Capture.identify_board
+   ```
+
+2. The receivers' ports, as in section 4:
+
+   ```
+   NODES=$(OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.live.RunLive.main ports)
+   ```
+
+3. The operator's reaction-time test, once per operator: press SPACE as the marker on screen crosses the line, 25 times
+   at each of 1.0 and 1.4 m/s. Each run writes a new file, `configs/operator_rt_<date>-<time>.json`, and never
+   overwrites one (`configs/operator_rt.json`, the calibration behind the shared recordings, stays as it is). The
+   logger uses the newest calibration, names it as it starts, and subtracts that delay from every press:
+
+   ```
+   OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.Capture.rt_calibration
+   ```
+
+### A tracking recording (one per participant)
+
+4. The 60 s empty-room baseline (nobody walks; the operator sits still), in a dated folder inside the session:
+
+   ```
+   OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.Capture.capture_logger --duration 60 --out data/room_A/session_04 --nodes "$NODES" --reset
+   ```
+   ```
+   BASE=$(ls -td data/room_A/session_04/*/ | head -1)
+   ```
+
+5. The session's plan, without the boards: the twelve lines and the 25 grid cells in a seeded order:
+
+   ```
+   OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.Capture.ground_truth --participant P07 --room A --session 04 --dry-run
+   ```
+
+6. The recording: the walking passes in two halves with the grid sweep between them.
+
+   ```
+   OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.Capture.ground_truth --participant P07 --room A --session 04 --mode both --baseline "$BASE" --nodes "$NODES" --rx-positions "RX1=2.5,5.5 RX2=-0.5,2.5 RX3=5.5,2.5" --tx-position 2.5,-0.5 --height-cm 175 --weight-kg 70 --clothing "jeans, T-shirt" --footwear trainers
+   ```
+
+   The keys go to the Terminal. Press SPACE as the walker's torso crosses each of the six taped crossings of a line,
+   or once they have settled on a grid cell. `x` redoes the pass, or the one just closed, and `q` stops. It writes
+   `participant_P07_walk_RX1.bin` to `_RX3.bin` and `participant_P07_walk.gt.json`: every press, each pass's line,
+   the reaction time, the receivers' positions and the participant's details. For a held-out test session, add
+   `--test` (the names get a `TEST` infix).
+
+7. Check that each file holds real CSI (rate, signal, dead subcarriers, a verdict per file):
+
+   ```
+   OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.Capture.inspect_capture data/room_A/session_04
+   ```
+
+### Identification walks (Room B's design)
+
+Line A only, walked away from the transmitter and back, with RX2 moved beside the transmitter at (2.0, -0.5). The
+recordings go to `data/room_B/identification/session_0<day>/`. In the commands below, put the person's capture code in
+place of `CODE`: it must be one of the six in `SIX` at the top of `pipeline/io/Capture/capture_idpath.py` (PA1 to PA6), so add a
+new person there first. Add `--dry-run` to any of them to see what it would record.
+
+8. Once, record RX2's identification spot:
+
+   ```
+   OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.Capture.capture_idboth --set-spot primary
+   ```
+
+9. The day's order of participants, and each one's order of blocks:
+
+   ```
+   OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.Capture.capture_idboth --plan-day --day 1
+   ```
+
+10. With RX2 at its spot, 30 s of empty room before the person walks (`--move-time` is the clock time RX2 was moved):
+
+    ```
+    OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.Capture.capture_idboth --empty --position idspot --participant CODE --day 1 --move-time 09:00 --nodes "$NODES"
+    ```
+
+11. The walk blocks: natural first, then slow and fast in the order step 9 printed (another order is refused). Press
+    SPACE at every metre, six times a pass:
+
+    ```
+    OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.Capture.capture_idboth --participant CODE --day 1 --block natural --height-cm 175 --weight-kg 70 --shoes trainers --clothing "jeans, T-shirt" --nothing-carried --nodes "$NODES"
+    ```
+
+12. RX2 back at its tracking position, then 30 s of empty room again:
+
+    ```
+    OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.Capture.capture_idboth --empty --position home --participant CODE --day 1 --move-time 09:40 --nodes "$NODES"
+    ```
+
+### After recording
+
+13. Room B tracking sessions only: write down, at capture time, which recording was the calibration walk and any pass
+    abandoned in the room (it only ever adds to `data/room_B/calibration.json`):
+
+    ```
+    OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.Capture.dc2b_manifest --session B3 --calibration participant_CODE_walk
+    ```
+    ```
+    OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.Capture.dc2b_manifest --session B3 --aborted participant_CODE_walk:7
+    ```
+
+14. Identification walks: if a press was doubled, the relabel removes the extra one by one fixed rule, in a copy under
+    `runs/` (the capture is never edited). Use new paths so the shipped relabel stays as it is:
+
+    ```
+    OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.Capture.idrelabel --write-manifest --manifest runs/identify/new/relabel_manifest.json
+    ```
+    ```
+    OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.Capture.idrelabel --manifest runs/identify/new/relabel_manifest.json --dst runs/identify/new_relabelled/identification
+    ```
+
+15. The labelled 2 s windows of the new session: each window is `walk` (its position interpolated in time between the
+    presses either side), `walk_edge`, `grid` or `idle`. Always give `--out`, as the default is inside `data/`:
+
+    ```
+    OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.Capture.windows --sessions 04 --out runs/windows_new
+    ```
+
+### Training on the recordings (in words)
+
+Training is not part of this release: the code that trained the two models is the thesis's development code, and only
+the frozen models are here. This is what each model needs, in words.
+
+**The tracker.** Cut every recording into labelled 2 s windows: every 1 s (step 15), and every 0.5 s with one window
+starting exactly on each start press, as the live app cuts them. Choose the training sessions and keep one session out
+to test on (the shipped tracker trained on A1, A2 and B1 and was tested on A3). On the training sessions' walking
+windows (not the standing dwells, which made it worse), train the five networks that give each window a position on
+the grid: one on the 0.5 s windows, three seeds on the 1 s windows (25 cells each) and one on 1 s windows with 100
+cells. Then train the two start readers on the same sessions: networks that read where a walk starts, with small
+classifiers fitted on what they output. Take the walking pace (the mean and spread of walking speed) from the training
+sessions' tape marks, and set the walking gate's threshold on standing dwells against walking windows. Decode the
+held-out session and score it.
+
+**The identification model.** Run every recording through the engine's own extractor. From each walk's press it takes
+4 s windows and makes the gait features, the Doppler maps and the Wi-Fi walking speed, and together these make a bank.
+On the bank, train the five classifiers: two on the features (a linear discriminant and gradient-boosted trees, each
+with a walking-pace prior) and three CNNs on the Doppler maps (all links together, the same with the pace prior, and
+one per link with the prior), three seeds each, with extra windows taken just after the press and copies stretched in
+time. Check by leaving one session out at a time (the fold models); the deployed model then trains on every session.
+
+**Putting a new model in.** For tracking, freeze the trained tracker into a folder of its own under
+`runs/public_model/tracking/` (the networks, `readers.pkl`, `pieces.pkl`, `meta.json` and a `HASHES.txt` of every
+file) and point `TRACKER` in `pipeline/live/RunLive/main.py` at it. For identification, put the model folder in
+`runs/identify/engine/models/<name>/` with its manifest, return its name from `deployment_model()` in
+`pipeline/live/RunLive/identification_app.py`, and list each of its files' sha256 in
+`runs/public_model/identification_hashes.txt`. Streamed runs use the fold model that never saw the streamed session,
+`loso_<session>_v5n` (the name is set in the same file). The pre-flight checks every one of those files before a run,
+and the app then runs exactly as in sections 3 to 6.

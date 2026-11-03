@@ -31,7 +31,7 @@ from pipeline.io.Capture.anchors import (
 )
 from pipeline.io.Capture.capture_logger import NodeState
 from pipeline.io.Capture.parse import CsiRecord
-from pipeline.io.Capture.rt_calibration import DEFAULT_CONFIG_PATH as RT_CONFIG_PATH
+from pipeline.io.Capture.rt_calibration import latest_config_path
 from pipeline.io.Capture.rt_calibration import software_version
 
 
@@ -154,7 +154,8 @@ class RtBias:
 
 
 # Load the operator's measured reaction-time bias.
-def load_rt_bias(path: str = RT_CONFIG_PATH) -> RtBias:
+def load_rt_bias(path: str = None) -> RtBias:
+    path = path or latest_config_path()
     if not os.path.exists(path):
         raise FileNotFoundError(
             f"No reaction-time calibration at {path}.\n"
