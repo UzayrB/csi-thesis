@@ -9,41 +9,39 @@ on them without boards (a streamed run), and with the boards and this README the
 
 ## How it fits together
 
-Every file the app runs is in a `RunLive/` folder, named for what it does. The one other folder in `pipeline/` is
-`io/Capture/`: the files that recorded the shared recordings and made their labels (its `README.md` says how a label
-is made); the app never loads them. Start at `pipeline/live/RunLive/main.py`: `app` opens a start window (tracking or
-identification) and runs that task with the other commands (`ports`, `preflight`, `track`, `identify`, `stream`),
-which also work on their own.
+`pipeline/` is the app and nothing else. Start at `pipeline/main.py`: `app` opens a start window (tracking or
+identification) and runs that task's steps in order (`ports`, `preflight`, `track`, or `identify`), and each step
+also works on its own. Each task then reads top to bottom in its own folder; every file starts with the steps it
+holds (T1 to T11 for tracking, I1 to I9 for identification) and what it does. The one other folder is
+`pipeline/io/Capture/`: the files that recorded the shared recordings and made their labels (its `README.md` says how a
+label is made); the app never loads them.
 
 ```
-pipeline/live/RunLive/main.py            the entry point: app | ports | preflight | track | identify | stream
-pipeline/live/RunLive/start_dialog.py    app: the start window, then the chosen task's steps in order
+pipeline/main.py                     START HERE: app | ports | preflight | track | identify | stream | ...
 
 ESP32 receivers over USB
-  -> pipeline/io/RunLive/serial_capture.py     one reader thread per receiver, packet rate and loss checks
-  -> pipeline/io/RunLive/serial_parse_csi.py   each line into one CSI record
-  -> pipeline/live/RunLive/boards_run.py       the records and the key presses, on one clock, to the running task
-       track     tracking_model.py builds the frozen tracker and the session (tracking_session.py):
-                 tracking_windows.py (2 s windows, with io/RunLive/signal_cleaning.py) -> tracking_networks.py and
-                 constrained/RunLive/network_*.py -> tracking_start_of_walk.py -> tracking_line_decision.py
-                 (constrained/RunLive/decoder_*.py) -> tracking_display.py -> tracking_screen.py draws it.
+  -> pipeline/io/boards.py           which port each receiver is on (by MAC); the receivers and the keys on one clock
+  -> pipeline/io/serial_capture.py   one reader thread per receiver, each line into one CSI record, rate checks
+       track     pipeline/tracking/: run.py -> tracker.py (the frozen tracker) -> session.py, which runs each packet
+                 through windows.py (2 s windows, with io/signals.py) -> networks.py -> start_terms.py ->
+                 decoder.py (the line) -> display.py (the dot) -> screen.py (the window).
                  Model: runs/public_model/tracking/f05_A3/
-       identify  identification_on_boards.py -> identification_app.py (one window: the path map, Done, the result) ->
-                 identify/RunLive/identification_engine.py (engine_gait_features.py, engine_classifiers.py).
+       identify  pipeline/identification/: run.py -> window.py (the path map, Done, the result) -> engine.py
+                 (features.py, classifiers.py), with extraction.py's helper processes.
                  Model: runs/identify/engine/models/deploy_all5_v5n/
   -> outputs in runs/live/ (see the end of this README)
-Without the boards: tracking_streamed.py (main stream) and identification_streamed.py (section 6)
+Without the boards: tracking/run.py's stream (main stream) and identification/recordings.py (section 6)
 ```
 
 | folder | what it holds | open first |
 |---|---|---|
 | `firmware/` | the change to Espressif's esp-csi that the four boards run | `esp-csi.patch` |
-| `pipeline/io/RunLive/` | finding the boards, serial capture, CSI line parsing, cleaning, 2 s windows | `serial_capture.py`, `serial_parse_csi.py`, `board_identify.py` |
+| `pipeline/main.py` | the app's front door: the start window, each task's steps in order, every command | `main.py` |
+| `pipeline/io/` | the boards: finding them by MAC, the run loop, serial capture and CSI line parsing, the cleaned signal | `boards.py`, `serial_capture.py`, `signals.py` |
 | `pipeline/io/Capture/` | how the recordings were made and labelled: the board check, the reaction-time test, the capture, the recording-day logger and its paths, the Room B identification captures, the press relabel, the labelled 2 s windows | `README.md`, `ground_truth.py`, `windows.py` |
 | `configs/` | the operator's reaction-time calibration, subtracted from every press in the recordings (a new calibration is a new file beside it) | `operator_rt.json` |
-| `pipeline/live/RunLive/` | the app: the commands, the start window, the board runs, the tracking session and screen, identification, the streamed runs | `main.py`, `start_dialog.py`, `tracking_model.py` |
-| `pipeline/constrained/RunLive/` | the tracker: the twelve lines, the networks, the decoder, the display rules | `twelve_lines.py`, `network_shared.py`, `decoder_semi_bounded.py` |
-| `pipeline/identify/RunLive/` | the identification engine, its gait features and its classifiers | `identification_engine.py`, `engine_gait_features.py` |
+| `pipeline/tracking/` | tracking: the run, the frozen tracker, the session, windows, networks, start terms, decoder, display and screen | `run.py`, `tracker.py`, `session.py` |
+| `pipeline/identification/` | identification: the run, the window, the extraction helpers, the engine, its gait features and its classifiers | `run.py`, `window.py`, `engine.py` |
 | `runs/public_model/` | the frozen tracker, the receivers' MACs, the identification files' hashes | `tracking/f05_A3/meta.json`, `boards.json`, `identification_hashes.txt` |
 | `runs/identify/` | the identification model and its five fold models (every file in git); the identification recordings' order for a replay | `engine/models/deploy_all5_v5n/manifest.json` |
 | `videos/` | the app's screens replayed on the recorded session B2 (PA1 to PA6) | `B2 Tracking walks/`, `B2 Identification walks/` |
@@ -82,16 +80,16 @@ shasum -a 256 -c runs/public_model/identification_hashes.txt
 | RX3 | (5.5, 2.5) |
 
 Both tasks use these positions; nothing moves between them. The TX needs only power; the receivers plug into the Mac. Write your receivers' MAC addresses (printed by
-`python -m pipeline.io.RunLive.board_identify`) into `runs/public_model/boards.json`.
+`python -m pipeline.io.boards`) into `runs/public_model/boards.json`.
 
 ## 3. The app: one command
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.live.RunLive.main app
+OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.main app
 ```
 
-A start dialog asks for the task, **Tracking** or **Identification** (identification needs no room: the model weighs
-every walk the same in any room). One task runs per run. To skip the dialog: `--task tracking`, or `--task
+A start window asks for the task, **Tracking** or **Identification** (identification needs no room: the model weighs
+every walk the same in any room). One task runs per run. To skip the window: `--task tracking`, or `--task
 identification`; `--minutes 20` stops after 20 minutes. The app then runs the commands of sections 4 and 5,
 which also work on their own.
 
@@ -102,22 +100,22 @@ stops if a line fails) and starts tracking (`--baseline <folder>` reuses an earl
 record 60 s of the empty room (nobody moves), then check everything:
 
 ```
-NODES=$(OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.live.RunLive.main ports)
+NODES=$(OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.main ports)
 ```
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.RunLive.serial_capture --duration 60 --out runs/live/baselines --nodes "$NODES" --reset --interval 10
+OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.io.serial_capture --duration 60 --out runs/live/baselines --nodes "$NODES" --reset --interval 10
 ```
 ```
 BASE=$(ls -td runs/live/baselines/*/ | head -1)
 ```
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.live.RunLive.main preflight --baseline "$BASE"
+OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.main preflight --baseline "$BASE"
 ```
 
 Every line must read `ok`. Then run tracking:
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.live.RunLive.main track --baseline "$BASE"
+OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.main track --baseline "$BASE"
 ```
 
 When it prints READY, click on the Terminal (the keys are read there), stand still for 10 s, press SPACE once as each
@@ -128,7 +126,7 @@ walk starts at its start tape, and press q to stop.
 Started from the app, identification runs:
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.live.RunLive.main identify --popup
+OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.main identify --popup
 ```
 
 Walks can be on any of the twelve paths. One window opens, and every walk goes through it in three steps:
@@ -153,7 +151,7 @@ feature components read the receivers' 107 bins, and each packet is divided by i
 features are taken, and the Doppler contours' percentile crossing is interpolated inside its bin. The three
 CNN components are v5s's, on the raw amplitude. `hgb_pace_prior` reads its standardiser from `state_rf_pace_prior.pkl`.
 The model's `manifest.json` names the five components in its `v5s` field, and its `v5n` field selects the v5n feature
-path in `pipeline/identify/RunLive/identification_engine.py`. The feature components carry the weight 1 on every walk in every room, so the
+path in `pipeline/identification/engine.py`. The feature components carry the weight 1 on every walk in every room, so the
 engine takes no room.
 
 ## 6. Run the thesis code on the recorded data
@@ -185,27 +183,27 @@ the line parser and the rig's consumer; only the packet source is replaced) to t
 Each walk's recorded start press is given as a SPACE at its recorded time:
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.live.RunLive.main app --task tracking --stream B2/participant_PA5_walk
+OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.main app --task tracking --stream B2/participant_PA5_walk
 ```
 
 `--stream <session>/<stem>`: the session is A1, A2, A3, B1 or B2, and the stem is a recording's name without its
 `.gt.json` (list them with `ls data/room_B/session_B2/*.gt.json`). A recording takes about 6 minutes and plays in real
 time only. The frozen tracker was trained on A1, A2 and B1, so A3 and B2 are the sessions it never saw. The run writes
 `runs/live/stream/<session>__<stem>/`: `log.jsonl` (every output), `summary.json` and `capture/` (the packets and presses
-as the app received them). `python -m pipeline.live.RunLive.main stream --stream B2/participant_PA5_walk --no-window`
+as the app received them). `python -m pipeline.main stream --stream B2/participant_PA5_walk --no-window`
 runs it without the window.
 
 **Identification.** A session's walks are decided by the fold model that never saw that session
 (`runs/identify/engine/models/loso_<session>_v5n`). Streamed through the live app with its window:
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.live.RunLive.identification_app rig --source recorded --session B2 --screen --speed max
+OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.main identify-recorded --session B2 --screen --speed max
 ```
 
 (`--speed 1` plays in real time.) Every walk decided as fast as the CPU allows, without a window:
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.live.RunLive.identification_app replay-identify --session B2
+OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.main replay-identify --session B2
 ```
 
 Each writes one line per decision to `runs/live/identify/` (`rig_recorded_B2_<date>_<time>.jsonl` or
@@ -252,7 +250,7 @@ overwrite a recording).
 2. The receivers' ports, as in section 4:
 
    ```
-   NODES=$(OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.live.RunLive.main ports)
+   NODES=$(OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.main ports)
    ```
 
 3. The operator's reaction-time test, once per operator: press SPACE as the marker on screen crosses the line, 25 times
@@ -390,9 +388,9 @@ time. Check by leaving one session out at a time (the fold models); the deployed
 
 **Putting a new model in.** For tracking, freeze the trained tracker into a folder of its own under
 `runs/public_model/tracking/` (the networks, `readers.pkl`, `pieces.pkl`, `meta.json` and a `HASHES.txt` of every
-file) and point `TRACKER` in `pipeline/live/RunLive/main.py` at it. For identification, put the model folder in
+file) and point `TRACKER` in `pipeline/tracking/tracker.py` at it. For identification, put the model folder in
 `runs/identify/engine/models/<name>/` with its manifest, return its name from `deployment_model()` in
-`pipeline/live/RunLive/identification_app.py`, and list each of its files' sha256 in
+`pipeline/identification/run.py`, and list each of its files' sha256 in
 `runs/public_model/identification_hashes.txt`. Streamed runs use the fold model that never saw the streamed session,
 `loso_<session>_v5n` (the name is set in the same file). The pre-flight checks every one of those files before a run,
 and the app then runs exactly as in sections 3 to 6.

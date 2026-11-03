@@ -1,7 +1,7 @@
 # pipeline/io/Capture: how the data was recorded and labelled
 
 Every file that recorded the data and turned the operator's key presses into labels, in one place. The files import
-only each other, and the live app never loads them (it has its own copies of the capture code in `io/RunLive/`). Run
+only each other, and the live app never loads them (it has its own capture code in `io/serial_capture.py` and `io/signals.py`). Run
 every command from the repository root with `OMP_NUM_THREADS=1 PYTHONPATH=.` in front, as in the main README.
 
 ## How a label is made
