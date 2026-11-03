@@ -9,9 +9,11 @@ on them without boards (a streamed run), and with the boards and this README the
 
 ## How it fits together
 
-Every file the app runs is in a `RunLive/` folder, named for what it does, and nothing else is in `pipeline/`. Start at
-`pipeline/live/RunLive/main.py`: `app` opens a start window (tracking or identification) and runs that task with the
-other commands (`ports`, `preflight`, `track`, `identify`, `stream`), which also work on their own.
+Every file the app runs is in a `RunLive/` folder, named for what it does. The one other folder in `pipeline/` is
+`io/Capture/`: the files that recorded the shared recordings and made their labels (its `README.md` says how a label
+is made); the app never loads them. Start at `pipeline/live/RunLive/main.py`: `app` opens a start window (tracking or
+identification) and runs that task with the other commands (`ports`, `preflight`, `track`, `identify`, `stream`),
+which also work on their own.
 
 ```
 pipeline/live/RunLive/main.py            the entry point: app | ports | preflight | track | identify | stream
@@ -37,6 +39,8 @@ Without the boards: tracking_streamed.py (main stream) and identification_stream
 |---|---|---|
 | `firmware/` | the change to Espressif's esp-csi that the four boards run | `esp-csi.patch` |
 | `pipeline/io/RunLive/` | finding the boards, serial capture, CSI line parsing, cleaning, 2 s windows | `serial_capture.py`, `serial_parse_csi.py`, `board_identify.py` |
+| `pipeline/io/Capture/` | how the recordings were made and labelled: the board check, the reaction-time test, the capture, the recording-day logger and its paths, the Room B identification captures, the press relabel, the labelled 2 s windows | `README.md`, `ground_truth.py`, `windows.py` |
+| `configs/` | the operator's reaction-time calibration, subtracted from every press in the recordings | `operator_rt.json` |
 | `pipeline/live/RunLive/` | the app: the commands, the start window, the board runs, the tracking session and screen, identification, the streamed runs | `main.py`, `start_dialog.py`, `tracking_model.py` |
 | `pipeline/constrained/RunLive/` | the tracker: the twelve lines, the networks, the decoder, the display rules | `twelve_lines.py`, `network_shared.py`, `decoder_semi_bounded.py` |
 | `pipeline/identify/RunLive/` | the identification engine, its gait features and its classifiers | `identification_engine.py`, `engine_gait_features.py` |
