@@ -6,14 +6,11 @@ from __future__ import annotations
 
 import glob
 import json
-from dataclasses import dataclass
 
 import numpy as np
 
 WINDOW_S = 2.0
 STRIDE_S = 0.5
-STRIDE = STRIDE_S
-FS = 150.0
 E_REG, E_POST = 20, 24
 
 
@@ -35,49 +32,6 @@ def name_text(s: str) -> str:
     for n, c in PA_OF.items():
         s = s.replace(c, n)
     return s
-
-
-
-# Nets.device() takes the Apple GPU when it exists; the GPU belongs to Identification.
-def force_cpu() -> None:
-    import torch
-    torch.backends.mps.is_available = lambda: False
-
-
-
-# One recording's windows in time order, with everything a decoder or a metric needs.
-@dataclass
-class Recording:
-
-    session: str
-    stem: str
-    participant: str
-    t0: np.ndarray
-    t0_epoch: np.ndarray
-    mode: np.ndarray
-    pass_id: np.ndarray
-    path_name: np.ndarray
-    xy: np.ndarray
-    cell_id: np.ndarray
-    gap_flag: np.ndarray
-
-    # The number of items.
-    def __len__(self) -> int:
-        return int(len(self.t0))
-
-    # Function key.
-    @property
-    def key(self) -> str:
-        return f"{self.participant}|{self.session}"
-
-    # (pass_id, path_name, first_index, last_index) for each pass, in time order.
-    def pass_spans(self) -> list:
-        out = []
-        for pid in sorted({int(p) for p in self.pass_id if p >= 0}):
-            idx = np.flatnonzero(self.pass_id == pid)
-            if len(idx):
-                out.append((pid, str(self.path_name[idx[0]]), int(idx[0]), int(idx[-1])))
-        return out
 
 
 
@@ -158,25 +112,6 @@ class PathStates:
         self.path_index = {nm: i for i, nm in enumerate(names)}
         self.null = self.n_states
 
-    # Function direction of.
-    def direction_of(self, path_name: str) -> np.ndarray:
-        i0, _i1 = self.slice_of[path_name]
-        return self.dir_of[i0]
-
-    # Function points.
-    def points(self, path_name: str) -> np.ndarray:
-        i0, i1 = self.slice_of[path_name]
-        return self.xy[i0:i1]
-
-    # Function s values.
-    def s_values(self, path_name: str) -> np.ndarray:
-        i0, i1 = self.slice_of[path_name]
-        return self.s_of[i0:i1]
-
-    # Function describe.
-    def describe(self) -> str:
-        parts = [f"{nm}({self.slice_of[nm][1] - self.slice_of[nm][0]})" for nm in self.names]
-        return f"{len(self.names)} paths, {self.n_states} path states at {self.ds} m: " + " ".join(parts)
 
 
 # The cached state space.

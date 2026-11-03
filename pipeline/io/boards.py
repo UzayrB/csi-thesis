@@ -9,7 +9,6 @@ import json
 import os
 import queue
 import re
-import subprocess
 import sys
 import threading
 import time
@@ -39,20 +38,15 @@ def board_macs() -> dict:
     return m
 
 
-# {port: (mac or None, kind)}, from this file's own table (python -m pipeline.io.boards, read only), run as...
+# {port: (mac or None, kind)}: every attached port reset and asked which board is on it (read only; each...
 def find_boards() -> dict:
-    out = subprocess.run([sys.executable, "-m", "pipeline.io.boards"], cwd=REPO_ROOT,
-                         capture_output=True, text=True, timeout=600).stdout
     found = {}
-    for ln in out.splitlines():
-        p = ln.split()
-        if p and p[0].startswith("/dev/"):
-            if "RECEIVER" in ln:
-                found[p[0]] = (p[1].lower(), "receiver")
-            elif "TRANSMITTER" in ln:
-                found[p[0]] = (p[1].lower() if p[1] != "-" else None, "transmitter")
-            else:
-                found[p[0]] = (None, "inconclusive")
+    for port in discover_ports():
+        try:
+            kind = probe_port(port, verbose=False)
+        except Exception:
+            kind = None
+        found[port] = (MACS.get(port), kind) if kind else (None, "inconclusive")
     return found
 
 
@@ -309,7 +303,7 @@ def identify_at_baud(port: str, baud: int, timeout_s: float = 4.0) -> tuple[Opti
     try:
         import serial
     except ImportError as exc:
-        print(f"pyserial not installed ({exc}); pip install pyserial")
+        print(f"pyserial not installed ({exc}); pip install pyserial", file=sys.stderr)
         return None, ""
     try:
         ser = serial.Serial(port, baud, timeout=0.2)
@@ -335,20 +329,23 @@ def identify_at_baud(port: str, baud: int, timeout_s: float = 4.0) -> tuple[Opti
     return verdict, buf.decode("utf-8", errors="replace")
 
 
-# Identify the firmware on a port, trying each candidate baud.
-def probe_port(port: str, baud: Optional[int] = None, timeout_s: float = 4.0) -> Optional[str]:
+# Identify the firmware on a port, trying each candidate baud (its station MAC goes in MACS).
+def probe_port(port: str, baud: Optional[int] = None, timeout_s: float = 4.0, verbose: bool = True) -> Optional[str]:
+    say = print if verbose else (lambda *a, **k: None)
     bauds = (baud,) if baud else CANDIDATE_BAUDS
     last_text = ""
     for b in bauds:
-        print(f"  trying {b} baud ...", end=" ", flush=True)
+        say(f"  trying {b} baud ...", end=" ", flush=True)
         verdict, text = identify_at_baud(port, b, timeout_s)
         last_text = text or last_text
         if verdict:
             mac = find_sta_mac(text)
-            print(f"identified as {verdict}" + (f", station MAC {mac}" if mac else ""))
+            say(f"identified as {verdict}" + (f", station MAC {mac}" if mac else ""))
             MACS[port] = mac
             return verdict
-        print(f"nothing ({len(text)} bytes seen)")
+        say(f"nothing ({len(text)} bytes seen)")
+    if not verbose:
+        return None
     preview = "".join(ch if ch.isprintable() or ch in "\n\r\t" else "." for ch in last_text[-300:])
     if preview.strip():
         print("\n  last output seen (tail):")
@@ -357,7 +354,7 @@ def probe_port(port: str, baud: Optional[int] = None, timeout_s: float = 4.0) ->
     return None
 
 
-# Python -m pipeline.io.boards: a table of the boards on the ports (each port reset and listened to).
+# Python -m pipeline.io.boards: a table of the boards on the ports (each port reset and listened to), with...
 def main(argv: Optional[Sequence[str]] = None) -> int:
     p = argparse.ArgumentParser(
         prog="python -m pipeline.io.boards",

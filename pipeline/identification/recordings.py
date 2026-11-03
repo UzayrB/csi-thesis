@@ -6,8 +6,6 @@ from __future__ import annotations
 
 import json
 import os
-import pickle
-import re
 import time
 
 import numpy as np
@@ -15,8 +13,6 @@ import numpy as np
 from pipeline.identification import engine as EN
 
 
-
-OUT = os.path.join(EN.ENG, "replays")
 
 
 # Function session recordings.
@@ -29,146 +25,22 @@ def session_recordings(session: str) -> list:
     return sorted(recs, key=lambda r: first[r["stem"]])
 
 
-# The engine bank a replay is checked against: v2 (EN.bank_dir) for engine v2 models (names ending in...
-def load_bank(T: float, gs: bool, v2: bool = False) -> dict:
-    d = EN.bank_dir(T) if v2 else os.path.join(EN.ENG, f"bank_T{T:.1f}{'_gs' if gs else ''}")
-    meta = json.load(open(os.path.join(d, "meta.json")))["passes"]
-    return {"meta": meta, "X": np.load(os.path.join(d, "features.npy")), "maps": pickle.load(open(os.path.join(d, "maps.pkl"), "rb")),
-            "index": {(m["session"], round(m["t_start"], 6)): i for i, m in enumerate(meta)}}
-
-
 # PLAN 2.4: the detected direction if its accuracy on the identification walks is at least 95 %.
 def direction_mode() -> str:
     c = json.load(open(os.path.join(EN.ENG, "checks", "checks.json")))
     return "detected" if c["direction"]["RULE_detected_used"] else "recorded"
 
 
-# The session through one engine; returns the decisions (dicts), in press order.
-def replay(session: str, model_dir: str, T: float, gs: bool, device: str, dmode: str, on_decision=None, realtime=None) -> list:
-    from pipeline.io.serial_capture import read_capture_file
-    eng = EN.Engine(model_dir, T=T, amp_norm=gs, device=device)
-    out = []
-    for rec in session_recordings(session):
-        layout = "id_spot" if rec["kind"] == "idcap" else "home"
-        eng.new_recording(layout)
-        fr = {L: read_capture_file(f"{rec['stem']}_{L}.bin")[1] for L in EN.LINKS}
-        pos = {L: 0 for L in EN.LINKS}
-        gt = json.load(open(rec["stem"] + ".gt.json", encoding="utf-8"))
-        for q in sorted(gt["passes"], key=lambda z: z["t_start"]):
-            t0 = float(q["t_start"])
-            lim = t0 + T + EN.CAP_S
-            for L in EN.LINKS:
-                n = int(np.searchsorted(fr[L]["t_mono"], lim, side="right"))
-                eng.push(L, fr[L][pos[L]:n])
-                pos[L] = n
-            known = None if (rec["kind"] == "idcap" and dmode == "detected") else q["path_name"]
-            eng.press(t0, path=known, info={"session": session, "t_start": t0, "kind": rec["kind"], "block": rec["block"],
-                                            "path": q["path_name"], "t_end": float(q["t_end"])})
-            for d in eng.poll(lim):
-                out.append(d)
-                if on_decision:
-                    on_decision(d)
-    out_upd = list(eng.session.update_s) if eng.session is not None else []
-    for d, u in zip(out, out_upd):
-        d["update_s"] = u
-    return out
-
-
 
 SIX = ("PA5", "PA1", "PA2", "PA3", "PA4", "PA6")
 
 
-RETIRED = ("retired_1", "retired_2")
 PINDEX = {p: f"P{i + 1}" for i, p in enumerate(SIX)}
 
 
 # Function anon.
 def anon(name: str) -> str:
     return PINDEX.get(str(name), "P?")
-
-
-ROOT = os.path.join("runs", "identify", "idmax")
-FEAT = os.path.join(ROOT, "features")
-READS_LOG = os.path.join(ROOT, "READS.log")
-_ALLOWED = re.compile(r"^participant_(%s)(_TEST)?_walk$" % "|".join(SIX))
-
-
-# Function stem allowed.
-def stem_allowed(stem: str) -> bool:
-    return bool(_ALLOWED.match(stem)) and "DEMO" not in stem and "free" not in stem.lower() \
-        and not any(r in stem for r in RETIRED)
-
-
-# Function assert allowed.
-def assert_allowed(path: str) -> None:
-    base = os.path.basename(path)
-    stem = re.sub(r"(_RX\d)?\.(bin|gt\.json|meta\.json|npz)$", "", base)
-    if not stem_allowed(stem):
-        raise PermissionError(f"IDMAX refuses to read {path}: not one of the six walk recordings")
-    os.makedirs(ROOT, exist_ok=True)
-    with open(READS_LOG, "a", encoding="utf-8") as f:
-        f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')}\t{os.getpid()}\t{path}\n")
-
-
-# The eighteen (session, stem) walk recordings, each asserted allowed.
-def idmax_recordings() -> list:
-    from pipeline.tracking.settings import idmax_recordings as _r
-    out = [(s, st) for s, st in _r() if stem_allowed(st)]
-    assert len(out) == 18, f"expected 18 walk recordings, found {len(out)}"
-    return out
-
-
-# Function participant of.
-def participant_of(stem: str) -> str:
-    return stem.replace("participant_", "").split("_")[0]
-
-
-# Every pass with its presses, 1 m anchors, walk_edge window span and metadata.
-def pass_inventory() -> list:
-    p = os.path.join(ROOT, "inventory.json")
-    if os.path.exists(p):
-        return json.load(open(p, encoding="utf-8"))
-    rows = []
-    for s, stem in idmax_recordings():
-        gtp = os.path.join("data", "room_A", f"session_{s}", f"{stem}.gt.json")
-        mp = os.path.join("runs", "constrained", "windows_s1.0_roomA", "room_A", f"session_{s}", f"{stem}.meta.json")
-        assert_allowed(gtp)
-        assert_allowed(mp)
-        gt = json.load(open(gtp, encoding="utf-8"))
-        wins = json.load(open(mp, encoding="utf-8"))["windows"]
-        who = participant_of(stem)
-        ps = sorted(gt["passes"], key=lambda q: q["t_start"])
-        for order, q in enumerate(ps):
-            t = [w["t_start_abs"] for w in wins if w.get("pass_id") == q["pass_id"]]
-            coords = np.asarray(q["anchor_coords"], float)
-            length = float(np.sum(np.linalg.norm(np.diff(coords, axis=0), axis=1)))
-            dur = float(q["t_end"] - q["t_start"])
-            rows.append({
-                "session": s, "stem": stem, "participant": who, "anon": anon(who),
-                "rec": f"{s}|{anon(who)}", "pass_id": int(q["pass_id"]), "order": order,
-                "line": q["path_name"], "base_line": q["path_name"].split("_")[0]
-                if not q["path_name"].startswith("E_") else q["path_name"],
-                "direction": ("rev" if q["path_name"].endswith("_rev") else
-                              "fwd" if q["path_name"].endswith("_fwd") else "edge"),
-                "t_start_press": float(q["t_start"]), "t_end_press": float(q["t_end"]),
-                "anchor_times": [float(x) for x in q["anchor_times"]],
-                "walk_edge_lo": float(min(t)) if t else None,
-                "walk_edge_hi": float(max(t)) if t else None,
-                "prev_end_press": float(ps[order - 1]["t_end"]) if order else None,
-                "next_start_press": float(ps[order + 1]["t_start"]) if order + 1 < len(ps) else None,
-                "line_length_m": length, "duration_s": dur,
-                "speed_m_s": length / dur if dur > 0 else None,
-                "flagged": bool(q.get("flagged")),
-            })
-    os.makedirs(ROOT, exist_ok=True)
-    with open(p, "w", encoding="utf-8") as f:
-        json.dump(rows, f, indent=0)
-    return rows
-
-
-# Function pass key.
-def pass_key(r: dict) -> str:
-    return f"{r['session']}|{r['anon']}|{r['pass_id']}"
 
 
 

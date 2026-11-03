@@ -21,16 +21,16 @@ RETAIN_S = 20.0
 SPAN_WINDOWS = 40
 
 
-# Class Live Stream.
+# One stream of packets cut into 2 s windows: every receiver's packets kept, the windows cut on a grid every...
 class LiveStream:
-    # Sets up the object.
-    def __init__(self, baseline: dict, nodes=None, fs: float = None, window_s: float = None,
-                 stride_s: float = None, eps: float = None):
-        self.nodes = tuple(nodes or NODES)
-        self.fs = float(fs or FS)
-        self.window_s = float(window_s or WINDOW_S)
-        self.stride_s = float(stride_s or STRIDE_S)
-        self.eps = float(PRESS_EPS_S if eps is None else eps)
+
+    # Baseline: each receiver's 60 s empty-room shape (signals.session_baseline).
+    def __init__(self, baseline: dict):
+        self.nodes = NODES
+        self.fs = float(FS)
+        self.window_s = float(WINDOW_S)
+        self.stride_s = float(STRIDE_S)
+        self.eps = float(PRESS_EPS_S)
         self.n_samp = int(round(self.window_s * self.fs))
         self.baseline = {n: np.asarray(baseline[n], np.float32) for n in self.nodes}
         self.radio = {n: _Radio() for n in self.nodes}
@@ -76,23 +76,15 @@ class LiveStream:
     # A START press (raw key time).
     def press(self, t_press: float) -> dict:
         P = float(t_press)
-        prev = self.passes[-1] if self.passes else None
-        first = prev is None
+        first = not self.passes
         shift = self._shift(P)
-        if first:
-            boundary, known = -math.inf, True
-        elif prev.get("t_end") is not None:
-            boundary, known = 0.5 * (float(prev["t_end"]) + P), True
-        else:
-            boundary, known = -math.inf, False
-        self.passes.append({"t_start": P, "t_end": None, "shift": shift, "boundary": boundary,
-                            "boundary_known": known})
+        self.passes.append({"t_start": P, "shift": shift})
         floor_t = -math.inf if first else P - RECUT_BACK_S
         seg = len(self.passes) - 1
         todo, withdrawn = [], []
         for k in range(self.k_min, self.next_k):
             T = self._base(k)
-            if T < boundary or T + shift < floor_t:
+            if T + shift < floor_t:
                 continue
             if not self._ready(T + shift):
                 withdrawn = list(range(k, self.next_k))
@@ -106,17 +98,12 @@ class LiveStream:
         for k in withdrawn:
             self.windows.pop(k, None)
         self._apply(changed)
-        info = {"t_press": P, "shift": shift, "boundary": boundary, "boundary_known": known,
+        info = {"t_press": P, "shift": shift,
                 "n_recut": len(changed), "n_withdrawn": len(withdrawn), "first": first}
         self.recuts.append(info)
         return {**info, "windows": [self.windows[k] for k, _r in changed if k in self.windows],
                 "dropped": [k for k, r in changed if r is None or k not in self.windows],
                 "withdrawn": withdrawn}
-
-    # The current pass's END press: it places the next segment's boundary, nothing else.
-    def end_press(self, t_end: float) -> None:
-        if self.passes:
-            self.passes[-1]["t_end"] = float(t_end)
 
     # The recording stopped: the tree's two end limits, applied now that the end is known.
     def close(self) -> dict:
@@ -138,7 +125,7 @@ class LiveStream:
             out += self._emit(self.next_k)
         return {"windows": out, "withdrawn": withdrawn}
 
-    # (receivers, samples) RSSI on the window's lattice, exactly as features.rssi_series.
+    # (receivers, samples) RSSI on the window's lattice: each receiver's readings interpolated linearly, as the...
     def rssi_window(self, t0_epoch: float) -> np.ndarray:
         lat = float(t0_epoch) + np.arange(self.n_samp) / self.fs
         out = np.zeros((len(self.nodes), self.n_samp), np.float32)
@@ -156,20 +143,18 @@ class LiveStream:
     def _base(self, k: int) -> float:
         return self.first_base + k * self.stride_s
 
-    # Pa_starts' shift for a press, with its arithmetic: d = (P + eps - base0) / stride.
+    # How far a press moves the window grid so a window starts at it: d = (P + eps - base0) / stride, the...
     def _shift(self, P: float) -> float:
         d = (float(P) + self.eps - float(self.first_base)) / self.stride_s
         return (d - math.floor(d + 0.5)) * self.stride_s
 
-    # (segment, shift) for base start T: the last pass whose boundary is at or before it, as pa_starts'...
+    # (segment, shift) for a base start: the last press's (no press yet: no segment, no shift).
     def _current_shift(self, T: float) -> tuple:
-        seg, s = None, 0.0
-        for i, p in enumerate(self.passes):
-            if T >= p["boundary"]:
-                seg, s = i, p["shift"]
-        return seg, s
+        if not self.passes:
+            return None, 0.0
+        return len(self.passes) - 1, self.passes[-1]["shift"]
 
-    # The receiver's whole-file grid origin, with resample_uniform's arithmetic (origin 0).
+    # The receiver's whole-file grid origin: its first packet time rounded up to the 150 Hz grid (origin 0), as...
     def _grid_start(self, n: str) -> float:
         return 0.0 + np.ceil((self.first_t[n] - 0.0) * self.fs - 1e-9) / self.fs
 
@@ -179,7 +164,7 @@ class LiveStream:
         m = int(np.floor((self.radio[n].t[-1] - start) * self.fs + 1e-9)) + 1
         return start + (m - 1) / self.fs
 
-    # The window's samples on the WHOLE FILE's grid: start + i / fs, i from cut_recording's i0.
+    # The window's samples on the WHOLE FILE's grid: start + i / fs, from the sample nearest the window's start.
     def _grid(self, n: str, T2: float) -> np.ndarray:
         start = self._grid_start(n)
         i0 = int(round((T2 - start) * self.fs))
@@ -335,7 +320,7 @@ class _Radio:
             self.trimmed += i
 
 
-# Clean_arrays' chain on a slice of packets, sampled at the given grid instants.
+# One window cleaned (signals.py, in this order): the usable subcarriers, the shape normalised, outliers...
 def clean_window(amp: np.ndarray, ts: np.ndarray, grid: np.ndarray, baseline: np.ndarray) -> tuple:
     a = select_subcarriers(np.asarray(amp, dtype=np.float32), None)
     a = normalise_shape(a, None)

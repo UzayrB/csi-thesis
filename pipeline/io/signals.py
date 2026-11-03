@@ -1,6 +1,6 @@
 # Author: Uzayr Ballim
 # Debugger: Claude
-# What the file does: The signal, cleaned: amplitude from the subcarriers, the receivers' clocks put on the Mac's, resampling...
+# What the file does: The signal, in the order the app uses it: the session's 60 s empty-room baseline read from its capture...
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from typing import Optional, Sequence
 import numpy as np
 
 from pipeline.io.serial_capture import N_SUBCARRIERS, read_capture_file
-
 
 
 HALF: int = N_SUBCARRIERS // 2
@@ -30,19 +29,65 @@ NOMINAL_SLOPE: float = 1e-6
 MAX_CLOCK_PPM: float = 500.0
 WRAP_MARGIN_US: int = 2_000_000
 ARRIVAL_QUANTILE: float = 0.02
+FS: float = 150.0
+WINDOW_S: float = 2.0
+NODES: tuple[str, ...] = ("RX1", "RX2", "RX3")
+WALK_EDGE_S: float = 3.0
 
 
-# Drop guard/null subcarriers and keep a usable subcarrier set.
-def select_subcarriers(amplitude: np.ndarray, keep: Optional[Sequence[int]] = None) -> np.ndarray:
-    a = np.asarray(amplitude)
+
+# Function baseline dir for.
+def baseline_dir_for(session_dir: str, stem: str) -> str:
+    with open(os.path.join(session_dir, f"{stem}.gt.json"), encoding="utf-8") as f:
+        b = json.load(f).get("baseline_capture")
+    if not b:
+        raise ValueError(f"{stem}: sidecar names no baseline capture")
+    return b.rstrip("/")
+
+
+# The per-node baseline shape from an empty-room capture directory.
+def session_baseline(baseline_dir: str) -> dict[str, np.ndarray]:
+    out = {}
+    for n in NODES:
+        p = os.path.join(baseline_dir, f"{n}.bin")
+        if not os.path.exists(p):
+            raise FileNotFoundError(f"baseline {baseline_dir} has no {n}.bin")
+        amp, _ts, _s, _e = load_node(p)
+        out[n] = baseline_shape(amp)
+    return out
+
+
+# Raw 128-subcarrier amplitude, anchored times, stale packets dropped, mono-to-epoch offset.
+def load_node(path: str) -> tuple[np.ndarray, np.ndarray, int, float]:
+    _header, fr = read_capture_file(path)
+    ts, start = anchor_times(fr["local_timestamp"], fr["t_mono"])
+    fr = fr[start:]
+    amp = np.sqrt((fr["data"].astype(np.float32).reshape(len(fr), 128, 2) ** 2).sum(-1))
+    epoch_offset = float(fr["t_host"][0] - fr["t_mono"][0]) if len(fr) else 0.0
+    return amp, ts, start, epoch_offset
+
+
+# The per-session baseline SHAPE from an empty-room capture.
+def baseline_shape(amplitude: np.ndarray, keep: Optional[Sequence[int]] = None) -> np.ndarray:
+    a = remove_outliers(normalise_shape(select_subcarriers(np.asarray(amplitude, dtype=np.float32), keep), keep))
+    return estimate_baseline(a)
+
+
+# Estimate the per-session static baseline for each subcarrier.
+def estimate_baseline(amplitude: np.ndarray) -> np.ndarray:
+    a = np.asarray(amplitude, dtype=np.float64)
     if a.ndim != 2:
         raise ValueError(f"expected (n_samples, n_sub), got {a.shape}")
-    idx = np.asarray(DEFAULT_KEEP if keep is None else list(keep), dtype=int)
-    if idx.size == 0:
-        raise ValueError("keep must retain at least one subcarrier")
-    if idx.min() < 0 or idx.max() >= a.shape[1]:
-        raise ValueError(f"keep indices out of range for {a.shape[1]} subcarriers")
-    return a[:, idx]
+    if a.shape[0] == 0:
+        raise ValueError("cannot estimate a baseline from zero samples")
+    overall = float(a[a.sum(axis=1) > 0].mean()) if np.any(a.sum(axis=1) > 0) else 1.0
+    if abs(overall - 1.0) > 0.5:
+        raise ValueError(
+            f"estimate_baseline expects per-packet normalised input (mean ~1.0), got mean "
+            f"{overall:.3g}. Call normalise_shape first; baselines live in shape space."
+        )
+    return np.median(a, axis=0).astype(np.float32)
+
 
 
 # A fit relating one receiver's device clock to host time.
@@ -138,6 +183,20 @@ def apply_timebase(local_us: np.ndarray, tb: Timebase) -> np.ndarray:
     return tb.slope * x.astype(np.float64) + tb.offset
 
 
+
+# Drop guard/null subcarriers and keep a usable subcarrier set.
+def select_subcarriers(amplitude: np.ndarray, keep: Optional[Sequence[int]] = None) -> np.ndarray:
+    a = np.asarray(amplitude)
+    if a.ndim != 2:
+        raise ValueError(f"expected (n_samples, n_sub), got {a.shape}")
+    idx = np.asarray(DEFAULT_KEEP if keep is None else list(keep), dtype=int)
+    if idx.size == 0:
+        raise ValueError("keep must retain at least one subcarrier")
+    if idx.min() < 0 or idx.max() >= a.shape[1]:
+        raise ValueError(f"keep indices out of range for {a.shape[1]} subcarriers")
+    return a[:, idx]
+
+
 # Divide each LTF half of each packet by that half's own mean.
 def normalise_shape(amplitude: np.ndarray, keep: Optional[Sequence[int]] = None) -> np.ndarray:
     a = np.asarray(amplitude, dtype=np.float32)
@@ -172,17 +231,6 @@ def normalise_shape(amplitude: np.ndarray, keep: Optional[Sequence[int]] = None)
     return out
 
 
-# The interval between the source packets that bracket each grid sample.
-def packet_gap_on_grid(timestamps: np.ndarray, grid: np.ndarray) -> np.ndarray:
-    t = np.asarray(timestamps, dtype=np.float64)
-    g = np.asarray(grid, dtype=np.float64)
-    if t.size < 2:
-        return np.zeros(g.shape, dtype=np.float32)
-    t = np.unique(t)
-    hi = np.clip(np.searchsorted(t, g, side="right"), 1, t.size - 1)
-    return (t[hi] - t[hi - 1]).astype(np.float32)
-
-
 # Suppress impulsive amplitude spikes from packet-level glitches.
 def remove_outliers(amplitude: np.ndarray) -> np.ndarray:
     a = np.asarray(amplitude, dtype=np.float64)
@@ -207,20 +255,15 @@ def remove_outliers(amplitude: np.ndarray) -> np.ndarray:
     return out.astype(np.float32)
 
 
-# Estimate the per-session static baseline for each subcarrier.
-def estimate_baseline(amplitude: np.ndarray) -> np.ndarray:
-    a = np.asarray(amplitude, dtype=np.float64)
-    if a.ndim != 2:
-        raise ValueError(f"expected (n_samples, n_sub), got {a.shape}")
-    if a.shape[0] == 0:
-        raise ValueError("cannot estimate a baseline from zero samples")
-    overall = float(a[a.sum(axis=1) > 0].mean()) if np.any(a.sum(axis=1) > 0) else 1.0
-    if abs(overall - 1.0) > 0.5:
-        raise ValueError(
-            f"estimate_baseline expects per-packet normalised input (mean ~1.0), got mean "
-            f"{overall:.3g}. Call normalise_shape first; baselines live in shape space."
-        )
-    return np.median(a, axis=0).astype(np.float32)
+# The interval between the source packets that bracket each grid sample.
+def packet_gap_on_grid(timestamps: np.ndarray, grid: np.ndarray) -> np.ndarray:
+    t = np.asarray(timestamps, dtype=np.float64)
+    g = np.asarray(grid, dtype=np.float64)
+    if t.size < 2:
+        return np.zeros(g.shape, dtype=np.float32)
+    t = np.unique(t)
+    hi = np.clip(np.searchsorted(t, g, side="right"), 1, t.size - 1)
+    return (t[hi] - t[hi - 1]).astype(np.float32)
 
 
 # Subtract the per-session static baseline from an amplitude matrix.
@@ -235,49 +278,3 @@ def subtract_baseline(amplitude: np.ndarray, baseline: np.ndarray) -> np.ndarray
             f"not a shape. Baselines must come from estimate_baseline on normalised data."
         )
     return a - b[None, :]
-
-
-# The per-session baseline SHAPE from an empty-room capture.
-def baseline_shape(amplitude: np.ndarray, keep: Optional[Sequence[int]] = None) -> np.ndarray:
-    a = remove_outliers(normalise_shape(select_subcarriers(np.asarray(amplitude, dtype=np.float32), keep), keep))
-    return estimate_baseline(a)
-
-
-
-FS: float = 150.0
-
-
-WINDOW_S: float = 2.0
-NODES: tuple[str, ...] = ("RX1", "RX2", "RX3")
-WALK_EDGE_S: float = 3.0
-
-
-# Raw 128-subcarrier amplitude, anchored times, stale packets dropped, mono-to-epoch offset.
-def load_node(path: str) -> tuple[np.ndarray, np.ndarray, int, float]:
-    _header, fr = read_capture_file(path)
-    ts, start = anchor_times(fr["local_timestamp"], fr["t_mono"])
-    fr = fr[start:]
-    amp = np.sqrt((fr["data"].astype(np.float32).reshape(len(fr), 128, 2) ** 2).sum(-1))
-    epoch_offset = float(fr["t_host"][0] - fr["t_mono"][0]) if len(fr) else 0.0
-    return amp, ts, start, epoch_offset
-
-
-# The per-node baseline shape from an empty-room capture directory.
-def session_baseline(baseline_dir: str) -> dict[str, np.ndarray]:
-    out = {}
-    for n in NODES:
-        p = os.path.join(baseline_dir, f"{n}.bin")
-        if not os.path.exists(p):
-            raise FileNotFoundError(f"baseline {baseline_dir} has no {n}.bin")
-        amp, _ts, _s, _e = load_node(p)
-        out[n] = baseline_shape(amp)
-    return out
-
-
-# Function baseline dir for.
-def baseline_dir_for(session_dir: str, stem: str) -> str:
-    with open(os.path.join(session_dir, f"{stem}.gt.json"), encoding="utf-8") as f:
-        b = json.load(f).get("baseline_capture")
-    if not b:
-        raise ValueError(f"{stem}: sidecar names no baseline capture")
-    return b.rstrip("/")

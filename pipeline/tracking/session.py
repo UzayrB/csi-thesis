@@ -1,61 +1,42 @@
 # Author: Uzayr Ballim
 # Debugger: Claude
-# What the file does: One tracking session, from the first packet to the last: packets and SPACE presses go in (T5); 2 s windows...
+# What the file does: One tracking session, from the first packet to the last.
 
 from __future__ import annotations
 
 import copy
-import dataclasses
 import time
 
 import numpy as np
 
 from pipeline.io.signals import WALK_EDGE_S
-from pipeline.tracking.decoder import LiveDecoder, chain_totals, pick_line, transition_matrix
-from pipeline.tracking.display import CENTRE, DISPLAY_CANDIDATES, LATENCY_S, LiveDisplay
+from pipeline.tracking.decoder import LiveDecoder
+from pipeline.tracking.display import CENTRE, LATENCY_S, LiveDisplay
 from pipeline.tracking.settings import WINDOW_S
-from pipeline.tracking.tracker import DISPLAY_PROFILE, DISPLAY_PROFILES
 from pipeline.tracking.windows import RECUT_BACK_S, LiveStream
 
 MIN_IDLE_WINDOWS = 10
 FRAME_EPS_S = 1e-6
 
 
-# The frozen tracker on one stream of packets: semi mode (the shipped one) takes one SPACE per walk, at its...
+# The frozen tracker on one stream of packets.
 class Session:
 
-    MODES = ("semi", "full")
-
     # Tracker: tracker.load()'s Tracker.
-    def __init__(self, tracker, *, session: str, stem: str, baseline: dict, mode: str = "semi",
-                 display_profile: str = None):
-        assert mode in self.MODES, mode
-        self.tracker, self.mode = tracker, mode
+    def __init__(self, tracker, *, session: str, stem: str, baseline: dict):
         self.st = tracker.st
         self.pool, self.terms, self.G0 = tracker.networks, tracker.start_terms, float(tracker.G0)
-        self.tag = tracker.networks.tag
-        self.train, self.test, self.reader_tag = tuple(tracker.meta["train"]), (tracker.meta["test"],), tracker.meta["reader_tag"]
         opts = copy.deepcopy(tracker.opts)
-        opts["entry"], opts["entry_window_m"], opts["start_term"] = "soft", 1.0, None
-        self.display_profile = display_profile or DISPLAY_PROFILE
-        prof = DISPLAY_PROFILES[self.display_profile]
-        self.display_candidate = prof["candidate"]
-        sett = copy.deepcopy(tracker.display_settings)
-        sett.update(DISPLAY_CANDIDATES[self.display_candidate])
-        sett.update(prof["sett"])
         self.stream = LiveStream(baseline)
-        self.decoder = LiveDecoder(self.st, tracker.cfg, tracker.ne, tracker.transit, opts, session, stem)
-        self.display = LiveDisplay(self.st, tracker.cfg, tracker.ne, tracker.transit, opts, session, stem, sett)
-        if prof["sd_scale"] is not None:
-            self.display.cfg_disp = dataclasses.replace(self.display.cfg_disp, sd_scale=float(prof["sd_scale"]))
+        self.decoder = LiveDecoder(self.st, tracker.cfg, tracker.ne, tracker.transit, opts)
+        self.display = LiveDisplay(self.st, tracker.cfg, tracker.ne, tracker.transit, opts)
         self.session, self.stem = session, stem
         self.win = {}
         self.order = []
         self.passes = {}
         self.first_press = None
         self.adaptation = None
-        self.decisions, self.decisions_full = [], []
-        self._full_pending = {}
+        self.decisions = []
         self.truth = None
         self.rrel, self.gate_scale, self.stats = None, None, {}
         self.first_lock, self.lock_changes = {}, []
@@ -68,7 +49,7 @@ class Session:
     def rssi(self, node, t_host, rssi) -> None:
         self.stream.push_rssi(node, t_host, rssi)
 
-    # A packet whose RSSI was already pushed at arrival (the rig's path: CSI waits for its clock fit).
+    # A packet whose RSSI was already pushed at arrival (CSI waits for its receiver's clock fit).
     def csi(self, node, t, amplitude, t_host, t_mono) -> None:
         t_ = time.perf_counter()
         recs = self.stream.push_packet(node, t, amplitude, t_host=t_host, t_mono=t_mono)
@@ -78,7 +59,7 @@ class Session:
             self._window(r)
             self.events.append((float(t_mono), cut + time.perf_counter() - t1, "window", float(r["t0"])))
 
-    # A start press: the windows re-cut on it, the idle statistics fixed at the first one, then the walk opens...
+    # A start press: the windows re-cut on it, the idle statistics fixed at the first one, the walk before it...
     def press(self, pid: int, t_press: float) -> None:
         t_ = time.perf_counter()
         res = self.stream.press(t_press)
@@ -98,11 +79,10 @@ class Session:
         if first:
             self._adapt(float(t_press))
             self.display.set_origin(float(self.win[self.order[0]]["t0"]))
-        if self.mode == "semi":
-            for q, pp in self.passes.items():
-                if pp.get("end") is None:
-                    pp["end"] = float(t_press)
-                    self.display.end_press(q, float(t_press))
+        for q, pp in self.passes.items():
+            if pp.get("end") is None:
+                pp["end"] = float(t_press)
+                self.display.end_press(q, float(t_press))
         self.passes[int(pid)] = {"press": float(t_press), "end": None, "terms": None}
         self.decoder.press(float(t_press), int(pid))
         self.display.press(int(pid), float(t_press))
@@ -110,32 +90,6 @@ class Session:
             self._park_drawn_ahead(int(pid), float(t_press))
         self.timing["press_s"].append(time.perf_counter() - t_)
         self.events.append((float(t_press), self.timing["press_s"][-1], "press", None))
-
-    # Full mode's end press.
-    def end_press(self, pid: int, t_end: float) -> None:
-        if self.mode == "semi":
-            raise AssertionError("semi-constrained mode takes no end press")
-        self.stream.end_press(t_end)
-        if int(pid) in self.passes:
-            self.passes[int(pid)]["end"] = float(t_end)
-        self.display.end_press(int(pid), float(t_end))
-        self._full_pending[int(pid)] = float(t_end)
-        self._full_due()
-
-    # The stream stopped: the last windows, the last frames, and every open walk decided.
-    def close(self) -> None:
-        res = self.stream.close()
-        for k in res["withdrawn"]:
-            self.win.pop(k, None)
-        if res["withdrawn"]:
-            self._sync()
-        for r in res["windows"]:
-            self._window(r)
-        self.draw_until(np.inf)
-        for row in self.decoder.close():
-            self._decided(row, at_close=True)
-        if self._full_pending:
-            self._full_due(final=True)
 
 
     # Function window.
@@ -149,8 +103,6 @@ class Session:
         for row in self.decoder.push(w["t0"], w["t0_epoch"], w["e"], w["ge"]):
             self._decided(row)
         self.timing["window_s"].append((time.perf_counter() - t_, bool(w["provisional"])))
-        if self._full_pending:
-            self._full_due()
         self._draw_ahead()
 
     # A window's features, RSSI and relative gate energy and, with pool, the five networks' pooled emission (on...
@@ -165,7 +117,7 @@ class Session:
             out["e"] = self.pool.emissions_from_probs(self.pool.head_probs(feats, rssi, self.rrel))[0]
         return out
 
-    # A pass's start terms read the windows ending in [press - 2, press + 1].
+    # A walk's start terms, once the windows ending in [press - 2, press + 1] have arrived.
     def _terms_due(self, t0_new: float) -> None:
         for pid, p in self.passes.items():
             if p["terms"] is not None or t0_new + 2.0 <= p["press"] + 1.0 + 1e-6:
@@ -174,56 +126,39 @@ class Session:
             t0 = np.asarray([self.win[k]["t0"] for k in ks], float)
             idx = np.flatnonzero((t0 + 2.0 >= p["press"] - 2.0 - 1e-6) & (t0 + 2.0 <= p["press"] + 1.0 + 1e-6))
             if len(idx) < 2:
-                p["terms"] = {"a2": None, "committed": None}
+                p["terms"] = {"committed": None}
             else:
                 F = np.stack([self.win[ks[i]]["feats"] for i in idx]).astype(np.float32)
                 R = np.stack([self.win[ks[i]]["rssi"] for i in idx]).astype(np.float32)
                 a2_row = self.terms.a2_row(t0[idx], F, R, p["press"])
                 veto_row = self.terms.veto_row(t0[idx], F, R, p["press"])
-                p["terms"] = {"a2": self.terms.terms(a2_row, None),
-                              "committed": self.terms.terms(a2_row, veto_row)}
+                p["terms"] = {"committed": self.terms.terms(a2_row, veto_row)}
             self.decoder.set_term(pid, p["terms"]["committed"])
-            self.display.set_terms(pid, p["terms"]["a2"], p["terms"]["committed"])
+            self.display.set_terms(pid, p["terms"]["committed"])
 
-    # The decoder committed a walk's line; in semi mode the walk's end is its causal exit.
+    # The decoder committed a walk's line; the walk's end is its causal exit (if before the next press).
     def _decided(self, row, at_close: bool = False) -> None:
         self.decisions.append({"pass_id": int(row["pass_id"]), "final_line": row["final_line"],
                                "exit_window": int(row["live_exit_window"]),
                                "decided_at_window": int(row["live_decided_at_window"]),
                                "t0_decided": float(self.decoder.t0[row["live_decided_at_window"]]),
                                "press": float(row["live_press"]), "at_close": bool(at_close)})
-        if self.mode == "semi":
-            pid = int(row["pass_id"])
-            t_exit = float(self.decoder.t0[int(row["live_exit_window"])]) + 1.0
-            pp = self.passes.get(pid)
-            if pp is not None and (pp.get("end") is None or t_exit < pp["end"]):
-                pp["end"] = t_exit
-                self.display.end_press(pid, t_exit)
+        pid = int(row["pass_id"])
+        t_exit = float(self.decoder.t0[int(row["live_exit_window"])]) + 1.0
+        pp = self.passes.get(pid)
+        if pp is not None and (pp.get("end") is None or t_exit < pp["end"]):
+            pp["end"] = t_exit
+            self.display.end_press(pid, t_exit)
         if self.log is not None:
             self.log.committed(at_close)
 
-    # Full mode: the committed line with the walk ending at the end press, once the last window whose centre is...
-    def _full_due(self, final: bool = False) -> None:
-        d = self.decoder
-        for pid, t_end in list(self._full_pending.items()):
-            p = next((q for q in d.passes if q["pid"] == pid), None)
-            if p is None or p["lo"] is None:
-                continue
-            cen = np.asarray(d.t0, float) + 1.0
-            hi = int(np.searchsorted(cen, t_end + 1e-9, side="right")) - 1
-            arrived = hi < len(d.t0) - 1 or final
-            if not arrived or hi < p["lo"]:
-                continue
-            e = np.asarray(d.e[p["lo"]:hi + 1], float)
-            tot = chain_totals(e, self.st, slice(0, hi + 1 - p["lo"]), transition_matrix(self.st, "tight", with_null=False),
-                               d.opts.get("chain_logprior"))
-            if p["term"]:
-                tot = {k: v + float(p["term"].get(k, 0.0)) for k, v in tot.items()}
-            line = pick_line(tot, self.st, bool(d.opts.get("family_first")))
-            self.decisions_full.append({"pass_id": pid, "final_line": line, "hi_end": hi, "t_end": t_end,
-                                        "decided_at_window": len(d.t0) - 1})
-            del self._full_pending[pid]
 
+    # Every frame is ready by its own time: draw up to the next window's end.
+    def _draw_ahead(self) -> None:
+        d = self.display
+        if d.frames is None or not d.t0:
+            return
+        self.draw_until(float(d.t0[-1]) + WINDOW_S + float(self.stream.stride_s) - FRAME_EPS_S)
 
     # The display's frames before x_stop, then the lock bookkeeping (the line first drawn for each walk is THE...
     def draw_until(self, x_stop: float) -> None:
@@ -237,13 +172,6 @@ class Session:
                 self.lock_changes.append({"pid": int(pid), "first": self.first_lock[pid], "now": ln})
         if self.log is not None:
             self.log.drawn(before)
-
-    # V1 on the screen: every frame is ready by its own time.
-    def _draw_ahead(self) -> None:
-        d = self.display
-        if d.frames is None or not d.t0:
-            return
-        self.draw_until(float(d.t0[-1]) + WINDOW_S + float(self.stream.stride_s) - FRAME_EPS_S)
 
     # A start press inside frames already drawn ahead: those frames of the new walk are its park, the room...
     def _park_drawn_ahead(self, pid: int, t_press: float) -> None:
@@ -260,21 +188,7 @@ class Session:
             self.log.parked(int(pid), before)
 
 
-    # A recording's ground truth, for the SCREEN only (the green marker and the verdict's colour).
-    def set_truth(self, sidecar: dict) -> None:
-        self.truth = {f"{self.session}|{self.stem}|{int(p['pass_id'])}": p for p in (sidecar or {}).get("passes", [])}
-
-    # Where the walker was at t, from the pass's anchor presses, as rb7_demo.truth_at gives it.
-    def _truth_at(self, pid: int, t: float):
-        p = (getattr(self, "truth", None) or {}).get(f"{self.session}|{self.stem}|{int(pid)}")
-        if p is None:
-            return None
-        at, ac = p["anchor_times"], p["anchor_coords"]
-        if not at[0] <= t <= at[-1]:
-            return None
-        return (float(np.interp(t, at, [c[0] for c in ac])), float(np.interp(t, at, [c[1] for c in ac])))
-
-    # What the screen shows at wall time now: the latest frame drawn at or before it, the line the display names...
+    # What the screen shows at time now: the latest frame drawn at or before it, the line the display names...
     def screen_state(self, now: float) -> dict:
         if not self.passes:
             return {"status": f"windows {len(self.order)}; waiting for the first press"}
@@ -297,19 +211,40 @@ class Session:
             if d is None:
                 verdict = {"pending": True, "drawn": line}
             else:
-                t = (getattr(self, "truth", None) or {}).get(f"{self.session}|{self.stem}|{int(pid)}")
+                t = (self.truth or {}).get(f"{self.session}|{self.stem}|{int(pid)}")
                 verdict = {"committed": d["final_line"], "drawn": line,
-                           "true": str(t.get("path_name", "")) if t else None}
-        if verdict and not verdict.get("pending"):
-            if self.mode == "full":
-                dq = next((q for q in self.decisions_full if q["pass_id"] == pid), None)
-                verdict["committed"] = dq["final_line"] if dq else None
-                verdict["label"] = "committed at the end press (upper bound)"
-            else:
-                verdict["label"] = "committed line (the walk has ended)"
+                           "true": str(t.get("path_name", "")) if t else None,
+                           "label": "committed line (the walk has ended)"}
         return {"dot": dot, "line": line if xs else None, "switched": switched, "green": green,
                 "verdict": verdict, "t_scene": now - LATENCY_S,
                 "status": f"walk {pid}  windows {len(self.order)}  decided {len(self.decisions)}"}
+
+    # A recording's ground truth, for the SCREEN only (the green marker and the verdict's colour).
+    def set_truth(self, sidecar: dict) -> None:
+        self.truth = {f"{self.session}|{self.stem}|{int(p['pass_id'])}": p for p in (sidecar or {}).get("passes", [])}
+
+    # Where the walker was at t, from the pass's anchor presses.
+    def _truth_at(self, pid: int, t: float):
+        p = (self.truth or {}).get(f"{self.session}|{self.stem}|{int(pid)}")
+        if p is None:
+            return None
+        at, ac = p["anchor_times"], p["anchor_coords"]
+        if not at[0] <= t <= at[-1]:
+            return None
+        return (float(np.interp(t, at, [c[0] for c in ac])), float(np.interp(t, at, [c[1] for c in ac])))
+
+    # The stream stopped: the last windows, the last frames, and every open walk decided.
+    def close(self) -> None:
+        res = self.stream.close()
+        for k in res["withdrawn"]:
+            self.win.pop(k, None)
+        if res["withdrawn"]:
+            self._sync()
+        for r in res["windows"]:
+            self._window(r)
+        self.draw_until(np.inf)
+        for row in self.decoder.close():
+            self._decided(row, at_close=True)
 
 
     # The idle windows ended by the first press: their per-link RSSI mean (the relative RSSI) and their median...
@@ -408,14 +343,8 @@ class Logger:
 
     # Function finish.
     def finish(self) -> None:
-        s = self.s
-        for d in s.decisions_full:
-            self.rows.append({"kind": "committed_full", "pid": d["pass_id"], "line": d["final_line"], "t_end": d["t_end"],
-                              "hi_end": d["hi_end"]})
-        for ch in s.lock_changes:
+        for ch in self.s.lock_changes:
             self.rows.append({"kind": "lock_change", **ch})
-        for pid, m in s.display.meta.items():
-            if m.get("min_margin_s") is not None:
-                self.rows.append({"kind": "margin", "pid": int(pid), "min_margin_s": float(m["min_margin_s"])})
+        for pid, m in self.s.display.meta.items():
             for sw in m.get("switches", []):
                 self.rows.append({"kind": "switch", "pid": int(pid), "x": float(sw["x"]), "old": sw["old"], "new": sw["new"]})

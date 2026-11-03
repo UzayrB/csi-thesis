@@ -1,6 +1,6 @@
 # Author: Uzayr Ballim
 # Debugger: Claude
-# What the file does: The identification engine: frames from the three receivers come in (I6), a SPACE press opens a 4 s window...
+# What the file does: The identification engine, in the order it runs: the model is loaded (I2); frames from the three receivers...
 
 from __future__ import annotations
 
@@ -10,6 +10,11 @@ import pickle
 import time
 
 import numpy as np
+
+import pipeline.identification.classifiers as C
+import pipeline.identification.features as F
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 
@@ -27,76 +32,204 @@ F_MIN = 0.3
 DIR_BAND = (10.0, 35.0)
 LINKS = ("RX1", "RX2", "RX3")
 CLASSES = ("P1", "P2", "P3", "P4", "P5", "P6")
-LABEL = "development evaluation, all data seen"
 FEATURE_WEIGHT = 1.0
 ENG = os.path.join("runs", "identify", "engine")
-DEV_NAMES = os.path.join("runs", "identify", "dev", "bank", "feature_names.json")
+DEV_NAMES = os.path.join(REPO_ROOT, "runs", "identify", "dev", "bank", "feature_names.json")
 
-
-
-V5S_CNN_TAGS = {"cnn": ("cnn3",), "cnn_prior": ("cnn3",), "cnn_perlink_prior": ("cnn_link0", "cnn_link1", "cnn_link2")}
-
-
-ENGINE_VERSION = 4
-SUFFIX = "_v4"
 DIR_T_S = 3.0
 DET_STEP_S = 0.25
 DET_REF_S, DET_MIN_S, DET_RUN = 2.5, 2.5, 10
 DET_HOP_S, DET_C0_S = 8.0 / 150.0, 16.0 / 150.0
 CADENCE_VOTE_MIN_ACF = 0.30
 
+CNN_TAGS = {"cnn": ("cnn3",), "cnn_prior": ("cnn3",), "cnn_perlink_prior": ("cnn_link0", "cnn_link1", "cnn_link2")}
 
-# Function bank dir.
-def bank_dir(T: float = T_S) -> str:
-    return os.path.join(ENG, f"bank_T{T:.1f}{SUFFIX}")
-
-
-# Engine v3 (fix F): as v2, but when no channel's autocorrelation peak reaches 0.30 the window has no...
-def resolve_cadence_v3(estimate_sets: list) -> dict:
-    strong = [e for e in estimate_sets if e.get("acf_peak") is not None and e["acf_peak"] >= CADENCE_VOTE_MIN_ACF]
-    if not strong:
-        return {"cadence_hz": None, "agree_frac": 0.0, "n_estimates": 0}
-    return _RESOLVE_V1(strong)
-
-
-# Function v1.
-def _v1():
-    import pipeline.identification.features as F
-    return F.resolve_cadence
-
-
-_RESOLVE_V1 = _v1()
+LAM11 = 299792458.0 / 2.462e9
+KEEP103 = np.asarray(F.KEEP)
+SC103 = np.asarray(F.SC)
+RAW103 = KEEP103[SC103]
+KEEP107 = np.array(sorted(set(KEEP103.tolist()) | {100, 101, 102, 103}))
+SC107 = np.array([i for i, k in enumerate(KEEP107) if k not in F.NULL_SC])
+RAW107 = KEEP107[SC107]
+IDX103 = np.array([int(np.flatnonzero(RAW107 == r)[0]) for r in RAW103])
 
 
 
-# Function rigs.
-def _rigs() -> dict:
-    return {"home": RIG_ROOM_A, "id_spot": RIG_DC2_IDSPOT["primary"]}
+# The receivers' frames in (push), presses in (press), decisions out (poll).
+class Engine:
+
+    # Sets up the object.
+    def __init__(self, model_dir=None, T: float = T_S, amp_norm: bool = False, layout: str = "id_spot",
+                 device: str = "cpu", names: list = None, alpha: float = None):
+        self.names = names if names is not None else json.load(open(DEV_NAMES))
+        if alpha is None and model_dir and os.path.exists(os.path.join(model_dir, "manifest.json")):
+            alpha = json.load(open(os.path.join(model_dir, "manifest.json"))).get("alpha")
+        self.alpha = alpha
+        if not is_v5n(model_dir):
+            raise SystemExit(f"REFUSED: {model_dir} is not an engine v5n model")
+        self.ex = Extractor(T, amp_norm, layout, self.names, alpha)
+        self.model = Model(model_dir, device, self.names)
+        self.session = Session(self.model)
+        self.decisions = []
+        self.pool = None
+        self._offsets()
+        self._walks, self._order, self._wid = {}, [], 0
+
+    # The offset windows' extractors (0.15 s and 0.30 s after the press), sharing the main extractor's...
+    def _offsets(self) -> None:
+        self.ex_off = {o: Extractor(self.ex.T, self.ex.amp_norm, self.ex.layout, self.names, self.alpha, rx=self.ex.rx, cut=False)
+                       for o in self.model.offsets}
+
+    # A new stream (new capture files): the receivers restart; the session's calibration pool stays.
+    def new_recording(self, layout: str = None) -> None:
+        self.ex = Extractor(self.ex.T, self.ex.amp_norm, layout or self.ex.layout, self.names, self.alpha)
+        self._offsets()
+        if self.pool is not None:
+            self.pool.reset()
+
+    # Function push.
+    def push(self, link: str, frames) -> None:
+        if self.pool is not None:
+            self.pool.arrived(frames)
+        self.ex.push(link, frames)
+        for e in self.ex_off.values():
+            e.newest = self.ex.newest
+
+    # Function press.
+    def press(self, t0: float, path=None, layout=None, info=None) -> None:
+        wid = self._wid
+        self._wid += 1
+        tagged = dict(info or {}, _walk=wid)
+        self.ex.press(t0, path, layout, tagged)
+        for o, e in self.ex_off.items():
+            e.press(t0 + o, path, layout, tagged)
+        self._walks[wid] = {"t0": float(t0), "info": info or {}, "layout": layout or self.ex.layout, "wins": {}}
+        self._order.append(wid)
+
+    # Function open windows.
+    @property
+    def open_windows(self) -> int:
+        return len(self.ex.pending) + sum(len(e.pending) for e in self.ex_off.values())
+
+    # Every window decided by now; each walk whose three windows are decided, in press order: the three...
+    def poll(self, now: float, closing: bool = False) -> list:
+        for o, e in [(0.0, self.ex)] + list(self.ex_off.items()):
+            for w, td, ex in e.poll(now, closing, self._extract):
+                self._walks[w["info"]["_walk"]]["wins"][o] = (td, ex)
+        keys = (0.0,) + self.model.offsets
+        out = []
+        while self._order and all(k in self._walks[self._order[0]]["wins"] for k in keys):
+            W = self._walks.pop(self._order.pop(0))
+            c0 = time.perf_counter()
+            res = [self.session.classify(W["wins"][k][1]) for k in keys]
+            comb = self.session.combine(res, FEATURE_WEIGHT)
+            model_s = time.perf_counter() - c0
+            td = W["wins"][keys[-1]][0]
+            ex0 = W["wins"][0.0][1]
+            d = {"t0": W["t0"], "t_dec": td, "T": self.ex.T, "info": W["info"], "extraction": ex0,
+                 "wait_s": td - (W["t0"] + self.ex.T), "engine_version": 5,
+                 "windows": {k: {"t_dec": W["wins"][k][0], "extraction": W["wins"][k][1], "components": r["components"]}
+                             for k, r in zip(keys, res)},
+                 "components": res[0]["components"], "calib_n": res[0]["calib_n"], "model_s": model_s, **comb}
+            order = np.argsort(-d["ensemble"])
+            d["top"], d["runner_up"] = CLASSES[int(order[0])], CLASSES[int(order[1])]
+            d["latency_s"] = d["wait_s"] + W["wins"][keys[-1]][1]["extract_s"] + model_s
+            self.session.add(ex0)
+            self.decisions.append(d)
+            out.append(d)
+        return out
+
+    # A window's extraction at its decision time: by the helper processes when there are any, else here.
+    def _extract(self, x, w: dict, td: float, timed: list):
+        return self.pool.late(x, w, td) if self.pool is not None else x.extract(w, td, timed)[0]
 
 
-# Idw_physics.mean_F for a layout: the mean projected bistatic factor over 101 points of the path.
-def mean_F(link: str, path: str, layout: str) -> float:
-    rig = _rigs()[layout]
-    a, b = (np.asarray(x, float) for x in PATHS[path])
-    u = np.linspace(0, 1, 101)
-    pts = a[None, :] + u[:, None] * (b - a)[None, :]
-    return float(np.mean(bistatic_factor(pts, b - a, rig["TX"], rig[link])))
+# A model folder whose manifest carries "v5n" (the shipped engine's models).
+def is_v5n(model_dir) -> bool:
+    p = os.path.join(model_dir, "manifest.json") if model_dir else None
+    return bool(p and os.path.exists(p) and json.load(open(p)).get("v5n"))
 
 
-_BEST = {}
-
-
-# (link index, F) of the link with the largest mean F for this path and layout.
-def best_link(path: str, layout: str) -> tuple:
-    key = (path, layout)
-    if key not in _BEST:
-        f = [mean_F(L, path, layout) for L in LINKS]
-        _BEST[key] = (int(np.argmax(f)), float(np.max(f)))
-    return _BEST[key]
+# Since 25 Oct 2026 the feature weight is 1 on every walk and the engine takes no room.
+def refuse_room_weights(model_dir: str, v5: dict) -> None:
+    if "room_weights" in v5:
+        raise ValueError(f"{model_dir}: the manifest carries room_weights, retired on 25 Oct 2026 (the feature weight is now 1 "
+                         "on every walk); this model's figures hold only at its room weights")
 
 
 
-# One receiver's frames in arrival order, with epochs (reboots) and unwrapped local time.
+# The trained model: the members its manifest names (classifiers on the gait features, CNNs on the Doppler...
+class Model:
+
+    # Sets up the object.
+    def __init__(self, model_dir: str, device: str = "cpu", names: list = None):
+        man = json.load(open(os.path.join(model_dir, "manifest.json")))
+        if not man.get("v5s") or int(man.get("engine_version", 4)) < 5:
+            raise SystemExit(f"REFUSED: {model_dir} is not an engine v5s or v5n model")
+        self.dir, self.device, self.manifest = model_dir, device, man
+        self.meta = json.load(open(os.path.join(model_dir, "meta_feat_cnn.json")))
+        self.cfg = self.meta["cfg"]
+        assert not self.cfg.get("layout") and not self.cfg.get("fn") and self.cfg.get("cols", "v2") == "v2", self.cfg
+        self.names = names if names is not None else json.load(open(DEV_NAMES))
+        self.cols = v2_columns(self.names)
+        v5, spec = man["v5"], man["v5s"]
+        refuse_room_weights(model_dir, v5)
+        mem = tuple(spec["members"])
+        all_feat = tuple(C.FEAT) + tuple(v5["extra_feature_components"])
+        all_cnn = tuple(c for c in C.COMPONENTS if c not in C.FEAT)
+        assert set(mem) <= set(all_feat + all_cnn) and len(set(mem)) == len(mem), mem
+        self.feat = {c: pickle.load(open(os.path.join(model_dir, f"feat_{c}.pkl"), "rb")) for c in all_feat if c in mem}
+        self.extra_feat = tuple(c for c in v5["extra_feature_components"] if c in mem)
+        self.states = {}
+        for c in self.extra_feat:
+            base = self.feat[c]["state_of"]
+            if base not in self.feat:
+                self.states[base] = pickle.load(open(os.path.join(model_dir, spec["state_files"][base]), "rb"))["state"]
+        self.offsets = tuple(float(o) for o in v5["offsets"])
+        self.cnn_tags = tuple(t for t in ("cnn3", "cnn_link0", "cnn_link1", "cnn_link2")
+                              if any(t in CNN_TAGS[c] for c in mem if c in CNN_TAGS))
+        self.nets, self.norm = {}, {}
+        for tag in self.cnn_tags:
+            self.norm[tag] = pickle.load(open(os.path.join(model_dir, f"{tag}_norm.pkl"), "rb"))
+            for s in self.meta["seeds"]:
+                self.nets[(tag, s)] = C._load_net(os.path.join(model_dir, f"{tag}_seed{s}.pt"),
+                                                  3 if tag == "cnn3" else 1).to(device)
+        self.feat_components = tuple(c for c in all_feat if c in mem)
+        self.cnn_components = tuple(c for c in all_cnn if c in mem)
+        self.components = self.feat_components + self.cnn_components
+        self.pace = tuple(c for c in C.PACE_COMPONENTS if c in mem) + tuple(
+            c for c in self.extra_feat if C.FEAT[self.feat[c]["state_of"]][2])
+
+    # A feature member's standardiser: its own, or the shared one read from its state file.
+    def state(self, base: str):
+        return self.feat[base]["state"] if base in self.feat else self.states[base]
+
+
+_V2 = {}
+
+
+# The 630 gait columns the model reads (features.columns_v2), as indices into names.
+def v2_columns(names: list) -> np.ndarray:
+    key = tuple(names)
+    if key not in _V2:
+        saved = C._FEAT_CACHE.get("dev")
+        C.register_variant("dev", np.zeros((1, len(names))), names)
+        _V2[key] = F.columns_v2({"names": names})
+        if saved is not None:
+            C._FEAT_CACHE["dev"] = saved
+            C._MASK_CACHE.clear()
+        assert len(_V2[key]) == 630, len(_V2[key])
+    return _V2[key]
+
+
+NAMES = json.load(open(DEV_NAMES))
+V2_COLS = v2_columns(NAMES)
+V2_NAMES = [NAMES[k] for k in V2_COLS]
+V2_INDEX = {n: i for i, n in enumerate(V2_NAMES)}
+
+
+
+# One receiver's frames in arrival order, with epochs (reboots) and unwrapped local time; the amplitude on...
 class Receiver:
 
     # Sets up the object.
@@ -105,7 +238,7 @@ class Receiver:
         self.tm = np.empty(0)
         self.lt = np.empty(0)
         self.ep = np.empty(0, int)
-        self.amp = np.empty((0, 103), np.float32)
+        self.amp = np.empty((0, 107), np.float32)
         self.rssi = np.empty(0, np.float32)
         self.prev_raw = None
         self.epoch = 0
@@ -117,9 +250,6 @@ class Receiver:
     def push(self, fr) -> None:
         if not len(fr):
             return
-        from pipeline.identification.features import KEEP
-        from pipeline.identification.features import SC
-        from pipeline.identification.features import amplitude_from_frames
         raw = np.asarray(fr["local_timestamp"], np.float64) * 1e-6
         tm = np.asarray(fr["t_mono"], np.float64)
         ep = np.empty(len(raw), int)
@@ -143,7 +273,7 @@ class Receiver:
                 self.n_reboots += 1
             start = j
         self.prev_raw = float(raw[-1])
-        a = amplitude_from_frames(fr)[:, KEEP][:, SC].astype(np.float32)
+        a = F.amplitude_from_frames(fr)[:, KEEP107][:, SC107].astype(np.float32)
         self._chunks.append((tm, lt, ep, a, np.asarray(fr["rssi"], np.float32)))
 
     # Drop whole blocks that arrived entirely before before (idle housekeeping; no copying).
@@ -188,7 +318,7 @@ class Receiver:
         off = self.offset(tau, idx)
         return float(self.lt[idx].max() + off) if off is not None else float(self.tm[idx].max())
 
-    # (t_hat, amplitude (n, 103), rssi) of the frames arrived by tau, timed by the clock at tau, sorted.
+    # (t_hat, amplitude (n, 107), rssi) of the frames arrived by tau, timed by the clock at tau, sorted.
     def timed(self, tau: float) -> tuple:
         idx = self.arrived(tau)
         off = self.offset(tau, idx)
@@ -198,23 +328,7 @@ class Receiver:
 
 
 
-# The direction from the window's raw amplitude (3, n, 103), identity-blind, and the path it gives.
-def signal_measures(A_raw: np.ndarray, path: str, layout: str) -> dict:
-    import pipeline.identification.features as RD
-    f, P = RD.conditioned_spectrogram(A_raw[1])
-    out = {"dir_slope": float("nan"), "dir_detected": None}
-    if P.shape[1] >= 2:
-        m = (f >= DIR_BAND[0]) & (f < DIR_BAND[1])
-        e = np.log10(P[m].sum(axis=0) + 1e-12)
-        k = np.arange(len(e), dtype=float)
-        slope = float(np.polyfit(k, e, 1)[0])
-        out["dir_slope"] = slope
-        out["dir_detected"] = "A_fwd" if slope < 0 else "A_rev"
-    out["path"] = path if path is not None else (out["dir_detected"] or "A_fwd")
-    return out
-
-
-# The stream side: three receivers, open windows, and the decision clock (V5NExtractor does the extraction).
+# Three receivers, the open windows, and the decision clock; at a window's decision time, its extraction.
 class Extractor:
 
     # Sets up the object.
@@ -236,7 +350,7 @@ class Extractor:
 
     # Function press.
     def press(self, t0: float, path=None, layout=None, info=None) -> None:
-        if ENGINE_VERSION >= 4 and self.cut and self.pending and self.pending[-1]["t0"] + self.T > float(t0) > self.pending[-1]["t0"]:
+        if self.cut and self.pending and self.pending[-1]["t0"] + self.T > float(t0) > self.pending[-1]["t0"]:
             self.pending[-1]["end"] = float(t0)
             self.pending[-1].pop("checked", None)
         self.pending.append({"t0": float(t0), "path": path, "layout": layout or self.layout, "info": info or {}})
@@ -245,7 +359,7 @@ class Extractor:
     def _end(self, w: dict) -> float:
         return w.get("end", w["t0"] + self.T)
 
-    # The engine's decision rule for any window end, on every frame that has arrived (engine v4's checkpoints).
+    # The decision rule for any window end, on every frame that has arrived: the first frame's arrival at which...
     def t_dec_end(self, t0: float, end: float) -> float:
         cap = end + CAP_S
         cand = np.unique(np.concatenate([r.tm[(r.tm > t0) & (r.tm <= cap)] for r in self.rx.values()]))
@@ -268,8 +382,8 @@ class Extractor:
             w["checked"] = hi
         return cap if now >= cap else None
 
-    # Windows decided by now, in press order: [(window, t_dec, extraction)].
-    def poll(self, now: float, closing: bool = False) -> list:
+    # Windows decided by now, in press order: [(window, t_dec, extraction)], each extraction from extract(self...
+    def poll(self, now: float, closing: bool, extract) -> list:
         if not self.pending:
             for r in self.rx.values():
                 r.drop_old(self.newest - KEEP_S)
@@ -283,21 +397,110 @@ class Extractor:
             if td is None:
                 break
             timed = [self.rx[L].timed(td) for L in LINKS]
-            ex = self.extract_v4(w, td, timed)
+            ex = extract(self, w, td, timed)
             self.pending.pop(0)
             out.append((w, td, ex))
         return out
 
+    # The end detector's checkpoints, DIR_T_S to T in DET_STEP_S steps.
+    def checkpoints(self) -> np.ndarray:
+        return np.round(np.arange(DIR_T_S, self.T + 1e-9, DET_STEP_S), 2)
+
+    # (3, n, 103): the receivers' amplitude on the 150 Hz grid from t0 to end, timed by the clock at td.
+    def _raw(self, t0: float, end: float, td: float) -> np.ndarray:
+        grid = np.arange(t0, end, 1.0 / FS)
+        return np.asarray([F._interp_cols(grid, t, a[:, IDX103].astype(np.float64)) for t, a, _r in [self.rx[L].timed(td) for L in LINKS]],
+                          np.float64)
+
+    # The window's extraction at its decision time, stage by stage: the direction (its first DIR_T_S), the...
+    def extract(self, w: dict, td: float, timed: list, early: dict = None, td_is_search: bool = False) -> tuple:
+        early = early or {}
+        how = {"dir": "late", "cp": {}}
+        t0, end = w["t0"], self._end(w)
+        e3 = min(t0 + DIR_T_S, end)
+        d3 = early.get("dir")
+        raw3 = None
+        if d3 is not None and d3["e3"] == e3:
+            sm3 = d3["sm3"]
+            how["dir"] = "early"
+        else:
+            raw3 = self._raw(t0, e3, self.t_dec_end(t0, e3))
+            sm3 = signal_measures(raw3, w["path"], w["layout"])
+        walk_end = end
+        if self.alpha is not None:
+            series = []
+            cp = early.get("cp", {})
+            for k, c in enumerate(self.checkpoints()):
+                ec = min(t0 + c, end)
+                hit = cp.get(k)
+                if hit is not None and hit[0] == ec:
+                    series.append(hit[1])
+                    how["cp"][k] = "early"
+                elif raw3 is not None and ec == e3:
+                    series.append((float(ec - t0), band_energy_rx2(raw3[1])))
+                    how["cp"][k] = "direction"
+                elif td_is_search and ec == end:
+                    series.append((float(ec - t0), band_energy_rx2(self._raw(t0, end, td)[1])))
+                    how["cp"][k] = "decision time"
+                else:
+                    series.append((float(ec - t0), band_energy_rx2(self._raw(t0, ec, self.t_dec_end(t0, ec))[1])))
+                    how["cp"][k] = "late"
+                if ec < t0 + c:
+                    break
+            d = detect_end(series, self.alpha, upto=self.T)
+            if d is not None:
+                walk_end = min(t0 + d[0], end)
+        return self.window(w, timed, sm3["path"], sm3, walk_end), how
+
+    # The window once its path and walking span are known: the Doppler maps (on the 103 subcarriers), the gait...
+    def window(self, w: dict, timed: list, path: str, sm3: dict, walk_end: float) -> dict:
+        t0, end = w["t0"], self._end(w)
+        layout = w["layout"]
+        T_win = self.T if end == t0 + self.T else end - t0
+        c0 = time.perf_counter()
+        grid = np.arange(t0, t0 + T_win, 1.0 / FS)
+        A_raw = np.asarray([F._interp_cols(grid, t, a[:, IDX103].astype(np.float64)) for t, a, _r in timed], np.float64)
+        maps = np.stack([F.conditioned_map_v2(A_raw[li]) for li in range(3)]).astype(np.float32)
+        AN = np.asarray([resample(timed[k], grid, "N") for k in range(3)])
+        RL = np.asarray([resample_rssi(timed[k], grid) for k in range(3)])
+        fv = np.full(len(self.names), np.nan, np.float32)
+        fv[V2_COLS] = live_features(AN, RL).astype(np.float32)
+        span = np.arange(t0, end, 1.0 / FS)
+        li, Fb = best_link(path, layout)
+        nw = int(np.searchsorted(span, walk_end, side="left"))
+        AH = np.asarray([resample(timed[k], span, "raw") for k in range(3)])
+        ft = torso_hz_h(AH[li][:nw]) if nw >= 64 else float("nan")
+        v = float(ft * LAM11 / (2.0 * Fb)) if (Fb >= F_MIN and np.isfinite(ft)) else float("nan")
+        return {"features": fv, "maps": maps, "layout": layout, "n_frames": [int(len(t)) for t, _a, _r in timed],
+                "extract_s": time.perf_counter() - c0, "path": path, "dir_detected": sm3["dir_detected"], "dir_slope": sm3["dir_slope"],
+                "speed_link": LINKS[li], "speed_F": Fb, "f_torso": ft, "wifi_speed": v, "walk_end_s": walk_end - t0,
+                "alpha": self.alpha, "window_s": end - t0, "engine": "v5n"}
+
+
+
+# The direction from the window's raw amplitude (3, n, 103), identity-blind, and the path it gives.
+def signal_measures(A_raw: np.ndarray, path: str, layout: str) -> dict:
+    f, P = F.conditioned_spectrogram(A_raw[1])
+    out = {"dir_slope": float("nan"), "dir_detected": None}
+    if P.shape[1] >= 2:
+        m = (f >= DIR_BAND[0]) & (f < DIR_BAND[1])
+        e = np.log10(P[m].sum(axis=0) + 1e-12)
+        k = np.arange(len(e), dtype=float)
+        slope = float(np.polyfit(k, e, 1)[0])
+        out["dir_slope"] = slope
+        out["dir_detected"] = "A_fwd" if slope < 0 else "A_rev"
+    out["path"] = path if path is not None else (out["dir_detected"] or "A_fwd")
+    return out
+
 
 # Per frame, RX2's conditioned spectrogram summed over the direction band (10 <= f < 35 Hz).
 def band_energy_rx2(a_rx2: np.ndarray) -> np.ndarray:
-    import pipeline.identification.features as RD
-    f, P = RD.conditioned_spectrogram(a_rx2)
+    f, P = F.conditioned_spectrogram(a_rx2)
     m = (f >= DIR_BAND[0]) & (f < DIR_BAND[1])
     return P[m].sum(axis=0)
 
 
-# Engine v4's end detector (iwg_bank.detect): per checkpoint c, the frame energies of [t0, t0 + c]; the...
+# The walk's end: per checkpoint c, the frame energies of [t0, t0 + c]; the first complete run of DET_RUN...
 def detect_end(series: list, alpha: float, upto: float):
     for c, e in series:
         if c > upto + 1e-9:
@@ -313,102 +516,83 @@ def detect_end(series: list, alpha: float, upto: float):
     return None
 
 
-
-# A trained ensemble (idz_core.train's saved files), applied one window at a time.
-class Model:
-
-    # Sets up the object.
-    def __init__(self, model_dir: str, device: str = "cpu", names: list = None):
-        man = json.load(open(os.path.join(model_dir, "manifest.json")))
-        if not man.get("v5s"):
-            raise SystemExit(f"REFUSED: {model_dir} is not an engine v5s or v5n model")
-        self._init_v5s(model_dir, device, names, man)
-
-    # Engine v5s: the model with only the members its manifest names; no other component's file is opened.
-    def _init_v5s(self, model_dir: str, device: str, names: list, man: dict) -> None:
-        import pipeline.identification.classifiers as W
-        self.dir, self.device = model_dir, device
-        self.meta = json.load(open(os.path.join(model_dir, "meta_feat_cnn.json")))
-        self.cfg = self.meta["cfg"]
-        assert not self.cfg.get("layout") and not self.cfg.get("fn") and self.cfg.get("cols", "v2") == "v2", self.cfg
-        self.names = names if names is not None else json.load(open(DEV_NAMES))
-        self.cols = v2_columns(self.names)
-        self.manifest = man
-        self.version = int(man.get("engine_version", ENGINE_VERSION))
-        assert self.version >= 5, "engine v5s needs an engine v5 model"
-        v5, spec = man["v5"], man["v5s"]
-        refuse_room_weights(model_dir, v5)
-        mem = tuple(spec["members"])
-        all_feat = tuple(W.FEAT) + tuple(v5["extra_feature_components"])
-        all_cnn = tuple(c for c in W.COMPONENTS if c not in W.FEAT)
-        assert set(mem) <= set(all_feat + all_cnn) and len(set(mem)) == len(mem), mem
-        self.v5s = spec
-        self.feat = {c: pickle.load(open(os.path.join(model_dir, f"feat_{c}.pkl"), "rb")) for c in all_feat if c in mem}
-        self.extra_feat = tuple(c for c in v5["extra_feature_components"] if c in mem)
-        self.states = {}
-        for c in self.extra_feat:
-            base = self.feat[c]["state_of"]
-            if base not in self.feat:
-                self.states[base] = pickle.load(open(os.path.join(model_dir, spec["state_files"][base]), "rb"))["state"]
-        self.offsets = tuple(float(o) for o in v5["offsets"])
-        self.cnn_tags = tuple(t for t in ("cnn3", "cnn_link0", "cnn_link1", "cnn_link2")
-                              if any(t in V5S_CNN_TAGS[c] for c in mem if c in V5S_CNN_TAGS))
-        self.nets, self.norm = {}, {}
-        for tag in self.cnn_tags:
-            self.norm[tag] = pickle.load(open(os.path.join(model_dir, f"{tag}_norm.pkl"), "rb"))
-            for s in self.meta["seeds"]:
-                self.nets[(tag, s)] = W._load_net(os.path.join(model_dir, f"{tag}_seed{s}.pt"),
-                                                  3 if tag == "cnn3" else 1).to(device)
-        self.feat_components = tuple(c for c in all_feat if c in mem)
-        self.cnn_components = tuple(c for c in all_cnn if c in mem)
-        self.components = self.feat_components + self.cnn_components
-        self.pace = tuple(c for c in W.PACE_COMPONENTS if c in mem) + tuple(
-            c for c in self.extra_feat if W.FEAT[self.feat[c]["state_of"]][2])
-
-    # A feature component's standardiser: its own, or the shared one read from its state file (engine v5s).
-    def state(self, base: str):
-        return self.feat[base]["state"] if base in self.feat else self.states[base]
+# Each frame divided by its mean over the subcarriers (N).
+def normalise(a: np.ndarray) -> np.ndarray:
+    a = np.asarray(a, np.float64)
+    return a / np.maximum(a.mean(axis=1, keepdims=True), 1e-9)
 
 
-_V2 = {}
+# One receiver's 107-bin amplitude on grid: the bracketing frames, then N ('N') or not ('raw'), then linear...
+def resample(timed_link: tuple, grid: np.ndarray, mode: str) -> np.ndarray:
+    t, a, _r = timed_link
+    j0 = max(int(np.searchsorted(t, grid[0])) - 1, 0)
+    j1 = min(int(np.searchsorted(t, grid[-1])) + 1, len(t))
+    ts, a_ = t[j0:j1], np.asarray(a[j0:j1], np.float64)
+    if mode == "N":
+        a_ = normalise(a_)
+    return F._interp_cols(grid, ts, a_)
 
 
-# The 630 v2 gait columns (idz_bank.columns_v2) as indices into names.
-def v2_columns(names: list) -> np.ndarray:
-    key = tuple(names)
-    if key not in _V2:
-        import pipeline.identification.classifiers as E
-        import pipeline.identification.features as ZB
-        saved = E._FEAT_CACHE.get("dev")
-        E.register_variant("dev", np.zeros((1, len(names))), names)
-        _V2[key] = ZB.columns_v2({"names": names})
-        if saved is not None:
-            E._FEAT_CACHE["dev"] = saved
-            E._MASK_CACHE.clear()
-        assert len(_V2[key]) == 630, len(_V2[key])
-    return _V2[key]
+# Function resample rssi.
+def resample_rssi(timed_link: tuple, grid: np.ndarray) -> np.ndarray:
+    t, _a, r = timed_link
+    j0 = max(int(np.searchsorted(t, grid[0])) - 1, 0)
+    j1 = min(int(np.searchsorted(t, grid[-1])) + 1, len(t))
+    return F._interp_cols(grid, t[j0:j1], np.asarray(r[j0:j1], np.float64))
 
 
-
-import pipeline.identification.features as _IB
-
-
-LAM11 = 299792458.0 / 2.462e9
-KEEP103 = np.asarray(_IB.KEEP)
-SC103 = np.asarray(_IB.SC)
-RAW103 = KEEP103[SC103]
-KEEP107 = np.array(sorted(set(KEEP103.tolist()) | {100, 101, 102, 103}))
-SC107 = np.array([i for i, k in enumerate(KEEP107) if k not in _IB.NULL_SC])
-RAW107 = KEEP107[SC107]
-IDX103 = np.array([int(np.flatnonzero(RAW107 == r)[0]) for r in RAW103])
-V5N_NAMES = json.load(open(DEV_NAMES))
-V5N_COLS = v2_columns(V5N_NAMES)
-V5N_V2 = [V5N_NAMES[k] for k in V5N_COLS]
-V5N_V2_INDEX = {n: i for i, n in enumerate(V5N_V2)}
+# The step rate voted by the channels with a clear rhythm (autocorrelation peak at least 0.30); when none...
+def strong_cadence(estimate_sets: list) -> dict:
+    strong = [e for e in estimate_sets if e.get("acf_peak") is not None and e["acf_peak"] >= CADENCE_VOTE_MIN_ACF]
+    if not strong:
+        return {"cadence_hz": None, "agree_frac": 0.0, "n_estimates": 0}
+    return F.resolve_cadence(strong)
 
 
+# The 630 gait columns with only the live ones computed (the rest NaN): AN (3, N, 107) under N, RL (3, N)...
+def live_features(AN: np.ndarray, RL: np.ndarray) -> np.ndarray:
+    out, chans, bm = {}, {}, {}
+    for li, link in enumerate(LINKS):
+        bg_long = F.bandpass(AN[li], "b08_35", axis=0)
+        bm[(li, "b08_35")] = bg_long
+        a_cut = AN[li]
+        chans[(link, "rms", "b08_35")] = F.bandpass(np.sqrt(np.mean(bg_long ** 2, axis=1)), "b08_35")[None, :]
+        chans[(link, "pca", "b08_35")] = F.reduce_link(a_cut, "b08_35", "pca", n_pc=6, bmat=bg_long)
+        bd_long = F.bandpass(AN[li], "dop", axis=0)
+        bm[(li, "dop_long")] = bd_long
+        chans[(link, "pca", "dop")] = F.reduce_link(a_cut, "dop", "pca", n_pc=6, bmat=bd_long)
+    live_ch = [(r, b) for r, b in F.CADENCE_CH if r != "mean"]
+    est = [F.cadence_estimates(chans[(link, red, band)][0]) for link in LINKS for red, band in live_ch]
+    cad = strong_cadence(est)
+    c = cad["cadence_hz"]
+    out["cad|all|-|-|cadence_hz"] = c
+    out["cad|all|-|-|agree_frac"] = cad["agree_frac"]
+    per_link = []
+    for link in LINKS:
+        rl_ = strong_cadence([F.cadence_estimates(chans[(link, red, band)][0]) for red, band in live_ch])
+        per_link.append(rl_["cadence_hz"])
+        out[f"cad|link|{link}|-|cadence_hz"] = rl_["cadence_hz"]
+    pl = [x for x in per_link if x]
+    out["cad|all|-|-|link_spread"] = float(np.ptp(pl)) if len(pl) > 1 else np.nan
+    for li, link in enumerate(LINKS):
+        for k, v in doppler_features_h(chans[(link, "pca", "dop")][1:], win_s=0.2, cadence_hz=c).items():
+            out[f"dop|pca-pc1@w0.2|{link}|-|{k}"] = v
+        lvl_r = max(float(np.asarray(AN[li], float).mean()), 1e-6)
+        d = F.bandpass(np.sqrt(np.mean(bm[(li, "dop_long")] ** 2, axis=1)), "b08_35")
+        r = np.asarray(RL[li], float)
+        out[f"mod|-|{link}|-|moddepth_dop"] = float(np.std(d) / lvl_r)
+        out[f"mod|-|{link}|-|sub_dispersion"] = float(np.median(np.std(bm[(li, "b08_35")], axis=0)) / 1e-9)
+        out[f"mod|-|{link}|-|rssi_std"] = float(np.std(r - np.median(r)))
+    v = np.full(len(V2_NAMES), np.nan)
+    for k, val in out.items():
+        i = V2_INDEX.get(k)
+        if i is not None:
+            v[i] = np.nan if val is None else val
+    v[~np.isfinite(v)] = np.nan
+    return v.astype(np.float32).astype(np.float64)
 
-# Conditioning.energy_percentile_contour with the crossing interpolated linearly inside its bin (bin j spans...
+
+# Per frame, the frequency below which pct % of the energy lies, the crossing interpolated linearly inside...
 def contour_interp(f: np.ndarray, mag: np.ndarray, pct: float) -> np.ndarray:
     f = np.asarray(f, float)
     df = float(f[1] - f[0])
@@ -429,19 +613,7 @@ def contour_interp(f: np.ndarray, mag: np.ndarray, pct: float) -> np.ndarray:
     return out
 
 
-# Id29_dc2_score.torso_hz with H2 and H3 (boundary None, padded False; the crossing interpolated).
-def torso_hz_h(a_link: np.ndarray, bmat: np.ndarray = None) -> float:
-    from scipy import signal
-    P = _IB.reduce_link(np.asarray(a_link, float), "dop", "pca", n_pc=4, bmat=bmat)[1:]
-    f, _t, Z = signal.stft(P, fs=FS, nperseg=32, noverlap=24, nfft=64, axis=-1, boundary=None, padded=False)
-    mag = np.abs(Z).sum(axis=0).T
-    keep = (f >= 4.0) & (f <= 70.0)
-    c = contour_interp(f[keep], mag[:, keep], 50.0)
-    c = c[np.isfinite(c)]
-    return float(np.median(c)) if len(c) else float("nan")
-
-
-# Idmax_features.doppler_features with H2 and H3: the STFT unpadded and the four contours interpolated.
+# The Doppler contour features of a link's first principal components: the STFT unpadded and the four...
 def doppler_features_h(x: np.ndarray, fs: float = FS, win_s: float = 0.2, cadence_hz=None) -> dict:
     from scipy import signal
     x = np.atleast_2d(np.asarray(x, float))
@@ -465,7 +637,7 @@ def doppler_features_h(x: np.ndarray, fs: float = FS, win_s: float = 0.2, cadenc
     for q in (50, 95):
         cq = cont[q] / med50
         out[f"c{q}_cv"] = float(np.std(cq) / max(np.mean(cq), 1e-9))
-        r = _IB._acf(cq)
+        r = F._acf(cq)
         lo, hi = int(0.3 * fr), min(int(2.2 * fr), len(r) - 1)
         out[f"c{q}_periodicity"] = float(r[lo:hi].max()) if hi > lo else np.nan
         if cadence_hz:
@@ -488,158 +660,78 @@ def doppler_features_h(x: np.ndarray, fs: float = FS, win_s: float = 0.2, cadenc
     return out
 
 
-
-# Function normalise.
-def normalise(a: np.ndarray) -> np.ndarray:
-    a = np.asarray(a, np.float64)
-    return a / np.maximum(a.mean(axis=1, keepdims=True), 1e-9)
-
-
-# One receiver's 107-bin amplitude on grid: the bracketing frames, then N ('N') or not ('raw'), then linear...
-def resample(timed_link: tuple, grid: np.ndarray, mode: str) -> np.ndarray:
-    t, a, _r = timed_link
-    j0 = max(int(np.searchsorted(t, grid[0])) - 1, 0)
-    j1 = min(int(np.searchsorted(t, grid[-1])) + 1, len(t))
-    ts, a_ = t[j0:j1], np.asarray(a[j0:j1], np.float64)
-    if mode == "N":
-        a_ = normalise(a_)
-    return _IB._interp_cols(grid, ts, a_)
-
-
-# Function resample rssi.
-def resample_rssi(timed_link: tuple, grid: np.ndarray) -> np.ndarray:
-    t, _a, r = timed_link
-    j0 = max(int(np.searchsorted(t, grid[0])) - 1, 0)
-    j1 = min(int(np.searchsorted(t, grid[-1])) + 1, len(t))
-    return _IB._interp_cols(grid, t[j0:j1], np.asarray(r[j0:j1], np.float64))
+# The torso's Doppler frequency on one link: the median of the 50 % contour (4 to 70 Hz), the STFT unpadded...
+def torso_hz_h(a_link: np.ndarray, bmat: np.ndarray = None) -> float:
+    from scipy import signal
+    P = F.reduce_link(np.asarray(a_link, float), "dop", "pca", n_pc=4, bmat=bmat)[1:]
+    f, _t, Z = signal.stft(P, fs=FS, nperseg=32, noverlap=24, nfft=64, axis=-1, boundary=None, padded=False)
+    mag = np.abs(Z).sum(axis=0).T
+    keep = (f >= 4.0) & (f <= 70.0)
+    c = contour_interp(f[keep], mag[:, keep], 50.0)
+    c = c[np.isfinite(c)]
+    return float(np.median(c)) if len(c) else float("nan")
 
 
 
-# The 630 v2 columns with only the live ones computed (the rest NaN), Queue 41's features_v statements for...
-def live_features(AN: np.ndarray, RL: np.ndarray) -> np.ndarray:
-    out, chans, bm = {}, {}, {}
-    for li, link in enumerate(LINKS):
-        bg_long = _IB.bandpass(AN[li], "b08_35", axis=0)
-        bm[(li, "b08_35")] = bg_long
-        a_cut = AN[li]
-        chans[(link, "rms", "b08_35")] = _IB.bandpass(np.sqrt(np.mean(bg_long ** 2, axis=1)), "b08_35")[None, :]
-        chans[(link, "pca", "b08_35")] = _IB.reduce_link(a_cut, "b08_35", "pca", n_pc=6, bmat=bg_long)
-        bd_long = _IB.bandpass(AN[li], "dop", axis=0)
-        bm[(li, "dop_long")] = bd_long
-        chans[(link, "pca", "dop")] = _IB.reduce_link(a_cut, "dop", "pca", n_pc=6, bmat=bd_long)
-    live_ch = [(r, b) for r, b in _IB.CADENCE_CH if r != "mean"]
-    est = [_IB.cadence_estimates(chans[(link, red, band)][0]) for link in LINKS for red, band in live_ch]
-    cad = resolve_cadence_v3(est)
-    c = cad["cadence_hz"]
-    out["cad|all|-|-|cadence_hz"] = c
-    out["cad|all|-|-|agree_frac"] = cad["agree_frac"]
-    per_link = []
-    for link in LINKS:
-        rl_ = resolve_cadence_v3([_IB.cadence_estimates(chans[(link, red, band)][0]) for red, band in live_ch])
-        per_link.append(rl_["cadence_hz"])
-        out[f"cad|link|{link}|-|cadence_hz"] = rl_["cadence_hz"]
-    pl = [x for x in per_link if x]
-    out["cad|all|-|-|link_spread"] = float(np.ptp(pl)) if len(pl) > 1 else np.nan
-    for li, link in enumerate(LINKS):
-        for k, v in doppler_features_h(chans[(link, "pca", "dop")][1:], win_s=0.2, cadence_hz=c).items():
-            out[f"dop|pca-pc1@w0.2|{link}|-|{k}"] = v
-        lvl_r = max(float(np.asarray(AN[li], float).mean()), 1e-6)
-        d = _IB.bandpass(np.sqrt(np.mean(bm[(li, "dop_long")] ** 2, axis=1)), "b08_35")
-        r = np.asarray(RL[li], float)
-        out[f"mod|-|{link}|-|moddepth_dop"] = float(np.std(d) / lvl_r)
-        out[f"mod|-|{link}|-|sub_dispersion"] = float(np.median(np.std(bm[(li, "b08_35")], axis=0)) / 1e-9)
-        out[f"mod|-|{link}|-|rssi_std"] = float(np.std(r - np.median(r)))
-    v = np.full(len(V5N_V2), np.nan)
-    for k, val in out.items():
-        i = V5N_V2_INDEX.get(k)
-        if i is not None:
-            v[i] = np.nan if val is None else val
-    v[~np.isfinite(v)] = np.nan
-    return v.astype(np.float32).astype(np.float64)
+ROOM_A_TX = (2.5, -0.5)
+PATHS = {
+    "A_fwd": ((2.5, 0.0), (2.5, 5.0)), "A_rev": ((2.5, 5.0), (2.5, 0.0)),
+    "B_fwd": ((0.0, 2.5), (5.0, 2.5)), "B_rev": ((5.0, 2.5), (0.0, 2.5)),
+    "C_fwd": ((0.0, 0.0), (5.0, 5.0)), "C_rev": ((5.0, 5.0), (0.0, 0.0)),
+    "D_fwd": ((0.0, 5.0), (5.0, 0.0)), "D_rev": ((5.0, 0.0), (0.0, 5.0)),
+    "E_col1": ((0.5, 0.0), (0.5, 5.0)), "E_col5": ((4.5, 0.0), (4.5, 5.0)),
+    "E_row1": ((0.0, 0.5), (5.0, 0.5)), "E_row5": ((0.0, 4.5), (5.0, 4.5)),
+}
+RIG_ROOM_A = {"TX": (2.5, -0.5), "RX1": (2.5, 5.5), "RX2": (-0.5, 2.5), "RX3": (5.5, 2.5)}
+RIG_DC2_IDSPOT = {"primary": {**RIG_ROOM_A, "RX2": (2.0, -0.5)},
+                  "fallback": {**RIG_ROOM_A, "RX2": (1.5, -0.5)}}
 
 
-
-# Engine.Receiver with the 107 bins stored (the shipped 103 are amp[:, IDX103]).
-class V5NReceiver(Receiver):
-
-    # Sets up the object.
-    def __init__(self):
-        super().__init__()
-        self.amp = np.empty((0, 107), np.float32)
-
-    # Function push.
-    def push(self, fr) -> None:
-        n0 = len(self._chunks)
-        super().push(fr)
-        if len(self._chunks) > n0:
-            from pipeline.identification.features import amplitude_from_frames
-            tm, lt, ep, _a, rs = self._chunks[-1]
-            self._chunks[-1] = (tm, lt, ep, amplitude_from_frames(fr)[:, KEEP107][:, SC107].astype(np.float32), rs)
+# Function rigs.
+def _rigs() -> dict:
+    return {"home": RIG_ROOM_A, "id_spot": RIG_DC2_IDSPOT["primary"]}
 
 
-# Engine.Extractor for v5n: the shipped direction and end detection, maps and decision clock (on the 103...
-class V5NExtractor(Extractor):
-
-    # Sets up the object.
-    def __init__(self, T: float = T_S, amp_norm: bool = False, layout: str = "id_spot", names: list = None,
-                 alpha: float = None, rx: dict = None, cut: bool = True):
-        super().__init__(T, amp_norm, layout, names, alpha, rx if rx is not None else {L: V5NReceiver() for L in LINKS}, cut)
-
-    # Function raw.
-    def _raw(self, t0: float, end: float, td: float) -> np.ndarray:
-        grid = np.arange(t0, end, 1.0 / FS)
-        return np.asarray([_IB._interp_cols(grid, t, a[:, IDX103].astype(np.float64)) for t, a, _r in [self.rx[L].timed(td) for L in LINKS]],
-                          np.float64)
-
-    # Function extract v4.
-    def extract_v4(self, w: dict, td: float, timed: list) -> dict:
-        t0, end = w["t0"], self._end(w)
-        layout = w["layout"]
-        e3 = min(t0 + DIR_T_S, end)
-        sm3 = signal_measures(self._raw(t0, e3, self.t_dec_end(t0, e3)), w["path"], layout)
-        path = sm3["path"]
-        walk_end = end
-        if self.alpha is not None:
-            series = []
-            for c in np.round(np.arange(DIR_T_S, self.T + 1e-9, DET_STEP_S), 2):
-                ec = min(t0 + c, end)
-                series.append((float(ec - t0), band_energy_rx2(self._raw(t0, ec, self.t_dec_end(t0, ec))[1])))
-                if ec < t0 + c:
-                    break
-            d = detect_end(series, self.alpha, upto=self.T)
-            if d is not None:
-                walk_end = min(t0 + d[0], end)
-        return self.window(w, timed, path, sm3, walk_end)
-
-    # The window once its path and walking span are known: the maps (v5s's), the live features and the H speed.
-    def window(self, w: dict, timed: list, path: str, sm3: dict, walk_end: float) -> dict:
-        t0, end = w["t0"], self._end(w)
-        layout = w["layout"]
-        T_win = self.T if end == t0 + self.T else end - t0
-        c0 = time.perf_counter()
-        grid = np.arange(t0, t0 + T_win, 1.0 / FS)
-        A_raw = np.asarray([_IB._interp_cols(grid, t, a[:, IDX103].astype(np.float64)) for t, a, _r in timed], np.float64)
-        maps = np.stack([_IB.conditioned_map_v2(A_raw[li]) for li in range(3)]).astype(np.float32)
-        AN = np.asarray([resample(timed[k], grid, "N") for k in range(3)])
-        RL = np.asarray([resample_rssi(timed[k], grid) for k in range(3)])
-        fv = np.full(len(self.names), np.nan, np.float32)
-        fv[V5N_COLS] = live_features(AN, RL).astype(np.float32)
-        span = np.arange(t0, end, 1.0 / FS)
-        li, Fb = best_link(path, layout)
-        nw = int(np.searchsorted(span, walk_end, side="left"))
-        AH = np.asarray([resample(timed[k], span, "raw") for k in range(3)])
-        ft = torso_hz_h(AH[li][:nw]) if nw >= 64 else float("nan")
-        v = float(ft * LAM11 / (2.0 * Fb)) if (Fb >= F_MIN and np.isfinite(ft)) else float("nan")
-        return {"features": fv, "maps": maps, "layout": layout, "n_frames": [int(len(t)) for t, _a, _r in timed],
-                "extract_s": time.perf_counter() - c0, "path": path, "dir_detected": sm3["dir_detected"], "dir_slope": sm3["dir_slope"],
-                "speed_link": LINKS[li], "speed_F": Fb, "f_torso": ft, "wifi_speed": v, "walk_end_s": walk_end - t0,
-                "alpha": self.alpha, "window_s": end - t0, "engine": "v5n"}
+_BEST = {}
 
 
-# A model folder whose manifest carries "v5n" (engine v5n).
-def is_v5n(model_dir) -> bool:
-    p = os.path.join(model_dir, "manifest.json") if model_dir else None
-    return bool(p and os.path.exists(p) and json.load(open(p)).get("v5n"))
+# (link index, F) of the link with the largest mean bistatic factor F for this path and layout.
+def best_link(path: str, layout: str) -> tuple:
+    key = (path, layout)
+    if key not in _BEST:
+        f = [mean_F(L, path, layout) for L in LINKS]
+        _BEST[key] = (int(np.argmax(f)), float(np.max(f)))
+    return _BEST[key]
+
+
+# The mean projected bistatic factor over 101 points of the path, for one link of a layout.
+def mean_F(link: str, path: str, layout: str) -> float:
+    rig = _rigs()[layout]
+    a, b = (np.asarray(x, float) for x in PATHS[path])
+    u = np.linspace(0, 1, 101)
+    pts = a[None, :] + u[:, None] * (b - a)[None, :]
+    return float(np.mean(bistatic_factor(pts, b - a, rig["TX"], rig[link])))
+
+
+# F at each point for one link and one walking direction.
+def bistatic_factor(points, direction, tx=ROOM_A_TX, rx=(2.5, 5.5)) -> np.ndarray:
+    p = np.atleast_2d(np.asarray(points, float))
+    tx = np.asarray(tx, float)
+    rx = np.asarray(rx, float)
+    v = np.asarray(direction, float)
+    n = np.linalg.norm(v)
+    if n < 1e-12:
+        return np.zeros(len(p))
+    v = v / n
+
+    # Function unit from.
+    def unit_from(node):
+        d = p - node[None, :]
+        return d / np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-9)
+
+    s = unit_from(tx) + unit_from(rx)
+    return np.abs(s @ v) / 2.0
+
 
 
 # A session's calibration pools and the model adapted to each.
@@ -650,6 +742,9 @@ class Session:
         self.m = model
         self.pools = {}
         self.update_s = []
+        self.hold = None
+        self.held = None
+        self.settles = []
         self._use("-")
 
     # Point the working pool at key's: X (630 gait columns per earlier window), speed, paths, W (each earlier...
@@ -657,42 +752,19 @@ class Session:
         p = self.pools.setdefault(key, {"X": [], "speed": [], "paths": [], "W": [], "adapted": {}})
         self.X, self.speed, self.paths, self.W, self.adapted = p["X"], p["speed"], p["paths"], p["W"], p["adapted"]
 
-    # Function route.
-    def _route(self, ex: dict) -> None:
-        self._use(ex.get("layout") or "-")
-
     # The number of items.
     def __len__(self):
-        return sum(len(p["X"]) for p in self.pools.values())
+        return sum(len(p["X"]) for p in self.pools.values()) + (self.held is not None)
 
-    # Function dir.
-    @staticmethod
-    def _dir(path: str) -> int:
-        return 1 if path.endswith("_rev") else 0
-
-    # Function cnn input.
-    def _cnn_input(self, tag, Wl, paths):
-        import pipeline.identification.classifiers as Z
-        chan = None if tag == "cnn3" else int(tag[-1])
-        nd = self.m.norm[tag]
-        Xs, ds, ps = [], [], []
-        for k, (w, p) in enumerate(zip(Wl, paths)):
-            Xs.append(w if chan is None else w[:, chan:chan + 1])
-            ds.append(np.full(len(w), nd["dir_map"][self._dir(p)]))
-            ps.append(np.full(len(w), k))
-        Xw, dw, pw = np.concatenate(Xs), np.concatenate(ds).astype(int), np.concatenate(ps).astype(int)
-        return Z.apply_norm_keyed(Xw, dw, None, nd["st"]), dw, pw
-
-    # The components' normalised log-probabilities for one window, and the ensemble.
+    # Each member's normalised log-probabilities for one window, and their sum.
     def classify(self, ex: dict) -> dict:
-        return self._classify_v5s(ex)
-
-    # Engine v5s: classify over the model's members only, the same statements for each member.
-    def _classify_v5s(self, ex: dict) -> dict:
-        import pipeline.identification.classifiers as C
+        if self.hold is not None:
+            self.settle("classify")
+        if hasattr(ex, "resolve"):
+            ex.resolve()
         m = self.m
         c0 = time.perf_counter()
-        self._route(ex)
+        self._use(ex.get("layout") or "-")
         g = ex["features"].astype(np.float64)[m.cols]
         path = ex["path"]
         out = {}
@@ -743,9 +815,20 @@ class Session:
                 "ensemble_nopace": C.normalise_logp(sum(comps[c] for c in comps if c not in m.pace)[None, :])[0],
                 "calib_n": n, "model_s": time.perf_counter() - c0}
 
-    # Engine v5: per window k, s_k = a x the feature components' sum + the CNN components' sum (summed in the...
+    # Function cnn input.
+    def _cnn_input(self, tag, Wl, paths):
+        chan = None if tag == "cnn3" else int(tag[-1])
+        nd = self.m.norm[tag]
+        Xs, ds, ps = [], [], []
+        for k, (w, p) in enumerate(zip(Wl, paths)):
+            Xs.append(w if chan is None else w[:, chan:chan + 1])
+            ds.append(np.full(len(w), nd["dir_map"][1 if p.endswith("_rev") else 0]))
+            ps.append(np.full(len(w), k))
+        Xw, dw, pw = np.concatenate(Xs), np.concatenate(ds).astype(int), np.concatenate(ps).astype(int)
+        return C.apply_norm_keyed(Xw, dw, None, nd["st"]), dw, pw
+
+    # The walk's three windows together: per window k, s_k = a x the feature members' sum + the CNN members' sum...
     def combine(self, results: list, a: float) -> dict:
-        import pipeline.identification.classifiers as C
         m = self.m
         ens, nop, raw = [], [], []
         for r in results:
@@ -768,174 +851,42 @@ class Session:
         conf = np.exp(z - z.max())
         return {"ensemble": E, "ensemble_nopace": Enp, "confidence": conf / conf.sum(), "weight_a": float(a)}
 
-    # Add a decided window to the pool and recompute the AdaBN copies for the next window.
+    # A decided walk's window joins the pool (held until the app has written the decision, when it holds).
     def add(self, ex: dict) -> None:
+        if self.hold is not None:
+            assert self.held is None
+            self.held = ex
+            return
+        self._add(ex)
+
+    # The held walk joins the pool: at the next poll, or at the next classification (the decision written first).
+    def settle(self, trigger: str = "poll") -> bool:
+        if self.held is None:
+            return False
+        if trigger == "classify":
+            self.hold()
+        ex, self.held = self.held, None
+        w0 = time.time()
+        self._add(ex)
+        self.settles.append({"trigger": trigger, "wall_start": w0, "wall_end": time.time(), "update_s": self.update_s[-1]})
+        return True
+
+    # Add a decided window to the pool and recompute the AdaBN copies for the next window.
+    def _add(self, ex: dict) -> None:
         c0 = time.perf_counter()
-        self._route(ex)
-        self._append(ex)
-        self._adapt()
-        self.update_s.append(time.perf_counter() - c0)
-
-    # A whole calibration pool at once (information-only settings such as CAL-others); one adaptation.
-    def set_pool(self, exs: list) -> None:
-        by = {}
-        for ex in exs:
-            by.setdefault(ex.get("layout") or "-", []).append(ex)
-        for key, group in by.items():
-            self._use(key)
-            for ex in group:
-                self._append(ex)
-            self._adapt()
-
-    # Function append.
-    def _append(self, ex: dict) -> None:
-        import pipeline.identification.classifiers as C
+        self._use(ex.get("layout") or "-")
         self.X.append(ex["features"].astype(np.float64)[self.m.cols])
         self.speed.append(ex["wifi_speed"])
         self.paths.append(ex["path"])
         self.W.append(C.windows(ex["maps"]))
+        self._adapt()
+        self.update_s.append(time.perf_counter() - c0)
 
-    # Function adapt.
+    # The members' networks adapted (AdaBN) to the pool (cnn3's adapted copies only when cnn_prior is a member).
     def _adapt(self) -> None:
-        self._adapt_v5s()
-
-    # Engine v5s: _adapt over the members' networks only (cnn3's adapted copies only when cnn_prior is a member).
-    def _adapt_v5s(self) -> None:
-        import pipeline.identification.classifiers as C
         for tag in self.m.cnn_tags:
             if tag == "cnn3" and "cnn_prior" not in self.m.cnn_components:
                 continue
             Xo, do, _p = self._cnn_input(tag, self.W, self.paths)
             for s in self.m.meta["seeds"]:
                 self.adapted[(tag, s)] = C.adabn(self.m.nets[(tag, s)], Xo, do, self.m.device)
-
-
-
-# Engine v5 since 25 Oct 2026: the feature weight is 1 on every walk and the engine takes no room.
-def refuse_room_weights(model_dir: str, v5: dict) -> None:
-    if "room_weights" in v5:
-        raise ValueError(f"{model_dir}: the manifest carries room_weights, retired on 25 Oct 2026 (the feature weight is now 1 "
-                         "on every walk); this model's figures hold only at its room weights")
-
-
-# One press in, one decision out.
-class Engine:
-
-    # Sets up the object.
-    def __init__(self, model_dir=None, T: float = T_S, amp_norm: bool = False, layout: str = "id_spot",
-                 device: str = "cpu", names: list = None, alpha: float = None):
-        self.names = names if names is not None else json.load(open(DEV_NAMES))
-        if alpha is None and model_dir and os.path.exists(os.path.join(model_dir, "manifest.json")):
-            alpha = json.load(open(os.path.join(model_dir, "manifest.json"))).get("alpha")
-        self.alpha = alpha
-        if not is_v5n(model_dir):
-            raise SystemExit(f"REFUSED: {model_dir} is not an engine v5n model")
-        self._xcls = V5NExtractor
-        self.ex = self._xcls(T, amp_norm, layout, self.names, alpha)
-        self.model = Model(model_dir, device, self.names)
-        self.session = Session(self.model)
-        self.decisions = []
-        self.v5 = True
-        self._offsets()
-        self._walks, self._order, self._wid = {}, [], 0
-
-    # Engine v5: the offset windows' extractors, sharing the main extractor's receivers, never cut by a press.
-    def _offsets(self) -> None:
-        self.ex_off = {o: self._xcls(self.ex.T, self.ex.amp_norm, self.ex.layout, self.names, self.alpha, rx=self.ex.rx, cut=False)
-                       for o in self.model.offsets}
-
-    # A new stream (new capture files): the receivers restart; the session's calibration pool stays.
-    def new_recording(self, layout: str = None) -> None:
-        self.ex = self._xcls(self.ex.T, self.ex.amp_norm, layout or self.ex.layout, self.names, self.alpha)
-        self._offsets()
-
-    # Function push.
-    def push(self, link: str, frames) -> None:
-        self.ex.push(link, frames)
-        for e in self.ex_off.values():
-            e.newest = self.ex.newest
-
-    # Function press.
-    def press(self, t0: float, path=None, layout=None, info=None) -> None:
-        wid = self._wid
-        self._wid += 1
-        tagged = dict(info or {}, _walk=wid)
-        self.ex.press(t0, path, layout, tagged)
-        for o, e in self.ex_off.items():
-            e.press(t0 + o, path, layout, tagged)
-        self._walks[wid] = {"t0": float(t0), "info": info or {}, "layout": layout or self.ex.layout, "wins": {}}
-        self._order.append(wid)
-
-    # Function open windows.
-    @property
-    def open_windows(self) -> int:
-        return len(self.ex.pending) + sum(len(e.pending) for e in self.ex_off.values())
-
-    # Engine v5: every window decided by now; each walk whose three windows are decided, in press order: the...
-    def _poll_v5(self, now: float, closing: bool) -> list:
-        for o, e in [(0.0, self.ex)] + list(self.ex_off.items()):
-            for w, td, ex in e.poll(now, closing):
-                self._walks[w["info"]["_walk"]]["wins"][o] = (td, ex)
-        keys = (0.0,) + self.model.offsets
-        out = []
-        while self._order and all(k in self._walks[self._order[0]]["wins"] for k in keys):
-            W = self._walks.pop(self._order.pop(0))
-            c0 = time.perf_counter()
-            res = [self.session.classify(W["wins"][k][1]) for k in keys]
-            comb = self.session.combine(res, FEATURE_WEIGHT)
-            model_s = time.perf_counter() - c0
-            td = W["wins"][keys[-1]][0]
-            ex0 = W["wins"][0.0][1]
-            d = {"t0": W["t0"], "t_dec": td, "T": self.ex.T, "info": W["info"], "extraction": ex0,
-                 "wait_s": td - (W["t0"] + self.ex.T), "engine_version": 5,
-                 "windows": {k: {"t_dec": W["wins"][k][0], "extraction": W["wins"][k][1], "components": r["components"]}
-                             for k, r in zip(keys, res)},
-                 "components": res[0]["components"], "calib_n": res[0]["calib_n"], "model_s": model_s, **comb}
-            order = np.argsort(-d["ensemble"])
-            d["top"], d["runner_up"] = CLASSES[int(order[0])], CLASSES[int(order[1])]
-            d["latency_s"] = d["wait_s"] + W["wins"][keys[-1]][1]["extract_s"] + model_s
-            self.session.add(ex0)
-            self.decisions.append(d)
-            out.append(d)
-        return out
-
-    # Function poll.
-    def poll(self, now: float, closing: bool = False) -> list:
-        return self._poll_v5(now, closing)
-
-
-
-ROOM_A_TX = (2.5, -0.5)
-
-
-# F at each point for one link and one walking direction.
-def bistatic_factor(points, direction, tx=ROOM_A_TX, rx=(2.5, 5.5)) -> np.ndarray:
-    p = np.atleast_2d(np.asarray(points, float))
-    tx = np.asarray(tx, float)
-    rx = np.asarray(rx, float)
-    v = np.asarray(direction, float)
-    n = np.linalg.norm(v)
-    if n < 1e-12:
-        return np.zeros(len(p))
-    v = v / n
-
-    # Function unit from.
-    def unit_from(node):
-        d = p - node[None, :]
-        return d / np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-9)
-
-    s = unit_from(tx) + unit_from(rx)
-    return np.abs(s @ v) / 2.0
-
-
-PATHS = {
-    "A_fwd": ((2.5, 0.0), (2.5, 5.0)), "A_rev": ((2.5, 5.0), (2.5, 0.0)),
-    "B_fwd": ((0.0, 2.5), (5.0, 2.5)), "B_rev": ((5.0, 2.5), (0.0, 2.5)),
-    "C_fwd": ((0.0, 0.0), (5.0, 5.0)), "C_rev": ((5.0, 5.0), (0.0, 0.0)),
-    "D_fwd": ((0.0, 5.0), (5.0, 0.0)), "D_rev": ((5.0, 0.0), (0.0, 5.0)),
-    "E_col1": ((0.5, 0.0), (0.5, 5.0)), "E_col5": ((4.5, 0.0), (4.5, 5.0)),
-    "E_row1": ((0.0, 0.5), (5.0, 0.5)), "E_row5": ((0.0, 4.5), (5.0, 4.5)),
-}
-RIG_ROOM_A = {"TX": (2.5, -0.5), "RX1": (2.5, 5.5), "RX2": (-0.5, 2.5), "RX3": (5.5, 2.5)}
-RIG_DC2_IDSPOT = {"primary": {**RIG_ROOM_A, "RX2": (2.0, -0.5)},
-                  "fallback": {**RIG_ROOM_A, "RX2": (1.5, -0.5)}}

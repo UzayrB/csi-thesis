@@ -126,7 +126,7 @@ walk starts at its start tape, and press q to stop.
 Started from the app, identification runs:
 
 ```
-OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.main identify --popup
+OMP_NUM_THREADS=1 PYTHONPATH=. python -m pipeline.main identify
 ```
 
 Walks can be on any of the twelve paths. One window opens, and every walk goes through it in three steps:
@@ -142,8 +142,8 @@ SPACE before Done, during a walk or on a result is refused, with what to press i
 (away from or towards the TX) from the map or the waiting page, `n` marks a new person (it resets the on-screen tally)
 and q stops; `n` and `q` also work in the identification window. The path is given
 rather than detected: the engine's direction detector covers line A only, and with RX2 at its tracking position it is
-right on 90.83 % of 120 line-A walks (96.9 % of 419 with RX2 beside the transmitter), below its 95 % rule. Without
-`--popup`, only `a` and `t` (line A) start a walk. It runs on the Apple GPU.
+right on 90.83 % of 120 line-A walks (96.9 % of 419 with RX2 beside the transmitter), below its 95 % rule. It runs on the
+Apple GPU.
 
 The identification model is engine v5n. It has the five components of engine v5s (`lda_pace_prior`, `hgb_pace_prior`,
 `cnn`, `cnn_prior` and `cnn_perlink_prior`); the four forests of engine v5 are not shipped and never loaded. The two

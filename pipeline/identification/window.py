@@ -13,8 +13,8 @@ import numpy as np
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DIR_WORD = {"A_fwd": "away", "A_rev": "towards"}
 NUMBER_WORDS = {5: "five"}
-POPUP_PICK_M = 0.4
-POPUP_LANE_M = 0.18
+PICK_M = 0.4
+LANE_M = 0.18
 PATHS_FILE = os.path.join(REPO_ROOT, "runs", "public_model", "tracking_paths.json")
 
 
@@ -57,7 +57,7 @@ class EngineScreen:
         for g in np.arange(0, 5.001, 1.0):
             ax.axhline(g, color="0.93", lw=0.6)
             ax.axvline(g, color="0.93", lw=0.6)
-        if st.get("popup"):
+        if st.get("on_map"):
             for a_, b_ in {tuple(sorted(se)) for se in screen_paths().values()}:
                 ax.plot([a_[0], b_[0]], [a_[1], b_[1]], color="0.88", lw=2.5)
         else:
@@ -80,20 +80,16 @@ class EngineScreen:
             lines.append(f"correct {k_} of {n_} ({100 * k_ / n_:.1f} %), chance 16.7 %")
         if st["open"]:
             lines.append("listening: walk in progress")
-        nxt = st.get("next_path") if st.get("popup") else None
+        nxt = st.get("walk_path")
         if nxt:
             s_, e_ = path_arrow(*lane_of(nxt, screen_paths()))
             ax.annotate("", xy=e_, xytext=s_, arrowprops={"arrowstyle": "-|>", "color": "tab:blue", "lw": 2, "ls": "--"})
-            ax.set_xlabel(f"next walk: {nxt}" if st.get("map_open", True) else f"this walk: {nxt} (picked on the map)",
-                          fontsize=10, color="tab:blue", weight="bold")
+            ax.set_xlabel(f"this walk: {nxt} (picked on the map)", fontsize=10, color="tab:blue", weight="bold")
         if d is None:
             bx.axis("off")
             cx.axis("off")
             if st.get("message"):
                 msg = st["message"]
-            elif st.get("popup"):
-                msg = ("pick the walk's path on the map window (one click),\nthen press SPACE in the Terminal as the walker "
-                       "starts\n(a / t: line A, away from / towards the TX)")
             elif st.get("dmode", "detected") == "detected":
                 msg = "press SPACE when the walker starts on line A"
             else:
@@ -153,7 +149,7 @@ class EngineScreen:
         self.fig.canvas.draw_idle()
         self.fig.canvas.flush_events()
 
-    # The window's events only (engine v5: between redraws); nothing is rebuilt.
+    # The window's events only (between redraws); nothing is rebuilt.
     def pump(self) -> None:
         if not self.headless:
             self.fig.canvas.flush_events()
@@ -240,9 +236,17 @@ class IdentifyWindow(EngineScreen):
         ax.set_xticks([])
         ax.set_yticks([])
 
-    # The path drawn nearest to (x, y) on the grid, within POPUP_PICK_M, or None.
+    # The path drawn nearest to (x, y) on the grid, within PICK_M, or None.
     def pick(self, x: float, y: float):
-        return PathPopup.pick(self, x, y)
+        p = np.array([x, y], float)
+        best, dist = None, PICK_M
+        for nm, (a, b) in self.lanes.items():
+            ab = b - a
+            q = a + np.clip(float(np.dot(p - a, ab) / max(float(np.dot(ab, ab)), 1e-12)), 0.0, 1.0) * ab
+            d_ = float(np.hypot(*(p - q)))
+            if d_ <= dist:
+                best, dist = nm, d_
+        return best
 
     # Function click.
     def _click(self, ev) -> None:
@@ -274,7 +278,7 @@ class IdentifyWindow(EngineScreen):
         self.phase = "ready"
         print(f"IDENTIFICATION: walk {self.picked}. Press SPACE in the Terminal as the walker starts.", flush=True)
         if self.focus_back:
-            PathPopup._focus_terminal()
+            focus_terminal()
         return True
 
     # A SPACE at time t: the walk's path when the window is waiting and Done came before the key, else None.
@@ -356,7 +360,7 @@ class IdentifyWindow(EngineScreen):
             self.mtext.text(0, 1, "\n".join(lines), va="top", fontsize=11)
             self._show()
             return
-        st = dict(st, popup=True, next_path=self.ready[1] if self.ready else None, map_open=False)
+        st = dict(st, on_map=True, walk_path=self.ready[1] if self.ready else None)
         if self.phase == "ready":
             st.update(last=None, message=f"walk: {self.ready[1]}\n\npress SPACE in the Terminal as the walker starts")
         elif self.phase == "walk":
@@ -389,6 +393,16 @@ def bring_to_front() -> None:
         pass
 
 
+# Give the keyboard back to the Terminal the app runs in, so SPACE reaches the key reader (macOS; not waited...
+def focus_terminal() -> None:
+    import subprocess
+    import sys
+    app = {"Apple_Terminal": "Terminal", "iTerm.app": "iTerm", "vscode": "Visual Studio Code"}.get(
+        os.environ.get("TERM_PROGRAM", ""))
+    if sys.platform == "darwin" and app:
+        subprocess.Popen(["open", "-a", app], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 
 # {path name: (start, end)} in name order, from the tracking sidecars (every *_walk.gt.json of the recorded...
 def tracking_paths(root: str = None) -> dict:
@@ -416,19 +430,19 @@ def tracking_paths(root: str = None) -> dict:
 _SCREEN_PATHS = {}
 
 
-# Tracking_paths(), read once per process (the screen and the pop-up draw from it).
+# Tracking_paths(), read once per process (the screen and the map draw from it).
 def screen_paths() -> dict:
     if not _SCREEN_PATHS:
         _SCREEN_PATHS.update(tracking_paths())
     return _SCREEN_PATHS
 
 
-# The path as the map draws it: moved POPUP_LANE_M to its own left when its reverse is also offered (so a...
+# The path as the map draws it: moved LANE_M to its own left when its reverse is also offered (so a line's...
 def lane_of(path: str, paths: dict) -> tuple:
     s, e = (np.asarray(x, float) for x in paths[path])
     u = (e - s) / max(float(np.hypot(*(e - s))), 1e-9)
     both = any(tuple(paths[path][1]) == tuple(s2) and tuple(paths[path][0]) == tuple(e2) for s2, e2 in paths.values())
-    off = POPUP_LANE_M * np.array([-u[1], u[0]]) if both else np.zeros(2)
+    off = LANE_M * np.array([-u[1], u[0]]) if both else np.zeros(2)
     return s + off, e + off
 
 
@@ -449,160 +463,3 @@ def _norm(lp):
     lp = np.asarray(lp, float)
     m = lp.max()
     return lp - (m + np.log(np.exp(lp - m).sum()))
-
-
-
-# The path pop-up: a map of the taped grid with the twelve tracking paths as arrows, start to end, read from...
-class PathPopup:
-
-    # Sets up the object.
-    def __init__(self, headless: bool = False, paths: dict = None, focus_back: bool = None, clock=None):
-        import matplotlib
-        if headless:
-            matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-        self.plt, self.headless = plt, headless
-        self.paths = dict(paths or screen_paths())
-        self.clock = clock or time.monotonic
-        self.focus_back = (not headless) if focus_back is None else bool(focus_back)
-        self.history = []
-        self.locked = False
-        self.ignored = 0
-        self.lanes = self._lanes()
-        self.fig = plt.figure(figsize=(5.6, 6.4))
-        if not headless and self.fig.canvas.manager:
-            self.fig.canvas.manager.set_window_title("identification: click the next walk's path, then SPACE in the Terminal")
-        self.ax = self.fig.add_axes([0.03, 0.03, 0.94, 0.82])
-        self.title = self.fig.text(0.04, 0.95, "", fontsize=12, weight="bold")
-        self.sub = self.fig.text(0.04, 0.905, "seen from above, the TX at the bottom; one click picks line and direction",
-                                 fontsize=9, color="0.3")
-        self.art = {}
-        self._build()
-        self._restyle()
-        self.fig.canvas.mpl_connect("button_press_event", self._click)
-        if not headless:
-            plt.show(block=False)
-            self._draw()
-
-    # {path: (start, end)} as drawn (lane_of): a line's two directions side by side.
-    def _lanes(self) -> dict:
-        return {nm: lane_of(nm, self.paths) for nm in self.paths}
-
-    # Function build.
-    def _build(self) -> None:
-        from matplotlib.patches import FancyArrowPatch
-        ax = self.ax
-        for g in np.arange(0, 5.001, 1.0):
-            ax.axhline(g, color="0.93", lw=0.6, zorder=0)
-            ax.axvline(g, color="0.93", lw=0.6, zorder=0)
-        for nm, (a, b) in self.lanes.items():
-            s, e = path_arrow(a, b, inset=0.15)
-            arr = FancyArrowPatch(s, e, arrowstyle="-|>", mutation_scale=16, lw=1.6, color="0.6", zorder=2)
-            ax.add_patch(arr)
-            u = (np.asarray(e) - np.asarray(s)) / max(float(np.hypot(*(np.asarray(e) - np.asarray(s)))), 1e-9)
-            lab = ax.text(*(np.asarray(a) - 0.34 * u), nm, ha="center", va="center", fontsize=8, color="0.35", zorder=3)
-            self.art[nm] = (arr, lab)
-        ax.set_xlim(-1.0, 6.0)
-        ax.set_ylim(-1.0, 6.0)
-        ax.set_aspect("equal")
-        ax.set_xticks([])
-        ax.set_yticks([])
-
-    # Function chosen.
-    @property
-    def chosen(self):
-        return self.history[-1][1] if self.history else None
-
-    # The path picked last at or before t (a key's time), or None.
-    def path_at(self, t: float):
-        for tp, nm in reversed(self.history):
-            if tp <= float(t):
-                return nm
-        return None
-
-    # The path drawn nearest to the point (x, y) on the grid, within POPUP_PICK_M, or None.
-    def pick(self, x: float, y: float):
-        p = np.array([x, y], float)
-        best, dist = None, POPUP_PICK_M
-        for nm, (a, b) in self.lanes.items():
-            ab = b - a
-            q = a + np.clip(float(np.dot(p - a, ab) / max(float(np.dot(ab, ab)), 1e-12)), 0.0, 1.0) * ab
-            d_ = float(np.hypot(*(p - q)))
-            if d_ <= dist:
-                best, dist = nm, d_
-        return best
-
-    # Function click.
-    def _click(self, ev) -> None:
-        if ev.inaxes is not self.ax or ev.xdata is None:
-            return
-        nm = self.pick(ev.xdata, ev.ydata)
-        if nm is not None:
-            self.choose(nm)
-
-    # A pick (the click's callback): refused while a walk is open; else recorded on the keys' clock and shown.
-    def choose(self, path: str, t: float = None) -> bool:
-        if path not in self.paths:
-            raise ValueError(f"{path!r} is not one of the tracking paths {sorted(self.paths)}")
-        if self.locked:
-            self.ignored += 1
-            print("IDENTIFICATION: a walk is in progress; the map opens again after its decision", flush=True)
-            return False
-        self.history.append((float(self.clock() if t is None else t), path))
-        self._restyle()
-        self._draw()
-        print(f"IDENTIFICATION: next walk {path}. Press SPACE in the Terminal as the walker starts.", flush=True)
-        if self.focus_back:
-            self._focus_terminal()
-        return True
-
-    # An a / t press: its line-A path becomes the one picked (the next SPACE repeats it).
-    def preselect(self, path: str, t: float) -> None:
-        self.history.append((float(t), path))
-
-    # A press: the map takes no pick until no walk is open.
-    def lock(self) -> None:
-        self.locked = True
-
-    # No walk open any more: the map opens again, the last path still picked.
-    def reopen(self) -> None:
-        self.locked = False
-        self._restyle()
-        self._draw()
-
-    # Function restyle.
-    def _restyle(self) -> None:
-        for nm, (arr, lab) in self.art.items():
-            on = nm == self.chosen
-            arr.set_color("tab:green" if on else "0.6")
-            arr.set_linewidth(3.4 if on else 1.6)
-            arr.set_zorder(4 if on else 2)
-            lab.set_color("tab:green" if on else "0.35")
-            lab.set_fontweight("bold" if on else "normal")
-        self.title.set_text("walk in progress: the map opens again after its decision" if self.locked else
-                            (f"next walk: {self.chosen}   (SPACE in the Terminal starts it)" if self.chosen else
-                             "click the next walk's path"))
-
-    # Function draw.
-    def _draw(self) -> None:
-        if not self.headless:
-            self.fig.canvas.draw_idle()
-
-    # Function pump.
-    def pump(self) -> None:
-        if not self.headless:
-            self.fig.canvas.flush_events()
-
-    # Function save.
-    def save(self, path: str) -> None:
-        self.fig.savefig(path, dpi=110)
-
-    # Give the keyboard back to the Terminal the app runs in, so SPACE reaches the key reader (macOS; not waited...
-    @staticmethod
-    def _focus_terminal() -> None:
-        import subprocess
-        import sys
-        app = {"Apple_Terminal": "Terminal", "iTerm.app": "iTerm", "vscode": "Visual Studio Code"}.get(
-            os.environ.get("TERM_PROGRAM", ""))
-        if sys.platform == "darwin" and app:
-            subprocess.Popen(["open", "-a", app], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

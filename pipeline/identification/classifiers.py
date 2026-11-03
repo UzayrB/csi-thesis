@@ -1,15 +1,13 @@
 # Author: Uzayr Ballim
 # Debugger: Claude
-# What the file does: I9's classifiers: the components the engine combines (the CNNs on the conditioned maps, the feature...
+# What the file does: The model's members, in the order the engine uses them: the CNNs loaded and the gait columns registered...
 
 from __future__ import annotations
 
 import copy
-import os
 from dataclasses import dataclass
 
 import numpy as np
-
 
 
 CLASSES = ("P1", "P2", "P3", "P4", "P5", "P6")
@@ -20,90 +18,7 @@ FEAT = {"rf": ("rf", "perpath", False), "rf_prior": ("rf", "prior", False), "rf_
         "et_pace_prior": ("et", "prior", True), "lda_pace_prior": ("lda", "prior", True)}
 
 
-# Idx_dev.prior_standardise, split into fit (training side) and apply (per calibration group).
-class Prior:
-
-    # Function fit.
-    def fit(self, Xtr, ptr, str_):
-        Xtr = np.array(Xtr, float)
-        med = np.nanmedian(Xtr, axis=0)
-        self.ok = np.isfinite(med)
-        self.med = med[self.ok]
-        Z = self._impute(Xtr)
-        self.keep = Z.std(axis=0) > 1e-12
-        Z = Z[:, self.keep]
-        self.g_mu, self.g_sd = Z.mean(0), Z.std(0) + 1e-9
-        A = np.empty_like(Z)
-        for s in np.unique(str_):
-            m = str_ == s
-            A[m] = self.zs(Z[m], ptr[m], Z[m], ptr[m])
-        return A
-
-    # Function impute.
-    def _impute(self, Xr):
-        Z = np.array(Xr, float)[:, self.ok]
-        r, c = np.nonzero(~np.isfinite(Z))
-        Z[r, c] = self.med[c]
-        return Z
-
-    # Function Z.
-    def Z(self, Xr):
-        return self._impute(Xr)[:, self.keep]
-
-    # Function zs.
-    def zs(self, Zrows, prows, Zref, pref):
-        out = np.empty_like(Zrows)
-        for p in np.unique(prows):
-            m = prows == p
-            rr = pref == p
-            if rr.sum() < 3:
-                rr = np.ones(len(pref), bool)
-            mu, sd = Zref[rr].mean(0), Zref[rr].std(0)
-            out[m] = (Zrows[m] - mu) / np.where(sd > 1e-9, sd, self.g_sd)
-        return out
-
-    # Function apply.
-    def apply(self, Xall, paths, rows, calib):
-        Zr = self.Z(Xall[rows])
-        if calib is not None and len(calib) >= 10:
-            return self.zs(Zr, paths[rows], self.Z(Xall[calib]), paths[calib])
-        return (Zr - self.g_mu) / self.g_sd
-
-
-
-# Function load net.
-def _load_net(path, c_in):
-    import torch
-    net = make_net(c_in, 6)
-    net.load_state_dict(torch.load(path, map_location="cpu"))
-    return net.eval()
-
-
-
 _FEAT_CACHE: dict = {}
-
-
-# Function load variant.
-def load_variant(variant: str) -> dict:
-    if variant == "S0_ORACLE_SPEED" and variant not in _FEAT_CACHE:
-        inv = IC.pass_inventory()
-        X = np.array([[r["speed_m_s"]] for r in inv], float)
-        _FEAT_CACHE[variant] = {"X": X, "names": ["S0|-|-|-|speed"], "fam": np.array(["S0"]),
-                                "rb": np.array(["-"]), "link": np.array(["-"]),
-                                "chan": np.array(["-"]), "nm": np.array(["speed"]),
-                                "keys": [IC.pass_key(r) for r in inv]}
-    if variant not in _FEAT_CACHE:
-        d = np.load(os.path.join(IC.FEAT, f"{variant}.npz"), allow_pickle=False)
-        names = [str(x) for x in d["names"]]
-        parts = [n.split("|") for n in names]
-        _FEAT_CACHE[variant] = {"X": d["X"].astype(np.float64), "names": names,
-                                "fam": np.array([p[0] for p in parts]),
-                                "rb": np.array([p[1] for p in parts]),
-                                "link": np.array([p[2] for p in parts]),
-                                "chan": np.array([p[3] for p in parts]),
-                                "nm": np.array([p[4] for p in parts]),
-                                "keys": [str(k) for k in d["keys"]]}
-    return _FEAT_CACHE[variant]
 
 
 FEATURE_SETS = {
@@ -137,6 +52,84 @@ PC_OPTS = {"pc1-3": (0, 1, 2), "pc2-4": (1, 2, 3), "pc1-6": (0, 1, 2, 3, 4, 5), 
            "pc1": (0,)}
 
 
+_MASK_CACHE: dict = {}
+
+
+HP = {
+    "fs": 150.0, "stft": {"nperseg": 32, "noverlap": 24, "nfft": 64}, "band_hz": (4.0, 70.0), "n_freq": 28,
+    "win_frames": 34, "hop_frames": 4,
+    "channels": (16, 32, 32), "dropout": 0.3,
+    "lr": 1e-3, "weight_decay": 1e-4, "batch": 64, "steps": 3000, "seeds": (0, 1, 2, 3, 4),
+    "aug": {"time_mask_max": 4, "freq_mask_max": 2, "log_gain_sd": 0.2, "link_drop_p": 0.15, "noise_sd": 0.02},
+    "prob_floor": 1e-9, "temperature_grid": (-1.0, 1.5, 61),
+}
+
+
+FREQS = np.fft.rfftfreq(HP["stft"]["nfft"], 1.0 / HP["fs"])
+KEEP_F = (FREQS >= HP["band_hz"][0]) & (FREQS <= HP["band_hz"][1])
+
+
+
+# Function load net.
+def _load_net(path, c_in):
+    import torch
+    net = make_net(c_in, 6)
+    net.load_state_dict(torch.load(path, map_location="cpu"))
+    return net.eval()
+
+
+# Function make net.
+def make_net(c_in: int, n_cls: int):
+    torch = _torch()
+    nn = torch.nn
+    c1, c2, c3 = HP["channels"]
+
+    # Class CNNv2.
+    class CNNv2(nn.Module):
+        # Sets up the object.
+        def __init__(self):
+            super().__init__()
+            self.f = nn.Sequential(
+                nn.Conv2d(c_in, c1, 3, padding=1), nn.BatchNorm2d(c1), nn.ReLU(), nn.MaxPool2d((1, 2)),
+                nn.Conv2d(c1, c2, 3, padding=1), nn.BatchNorm2d(c2), nn.ReLU(), nn.MaxPool2d((1, 2)),
+                nn.Conv2d(c2, c3, 3, padding=1), nn.BatchNorm2d(c3), nn.ReLU())
+            self.drop = nn.Dropout(HP["dropout"])
+            self.head = nn.Linear(c3 * HP["n_freq"] + 2, n_cls)
+
+        # Function forward.
+        def forward(self, x, d):
+            h = self.f(x).mean(-1).flatten(1)
+            return self.head(self.drop(torch.cat([h, d], 1)))
+    return CNNv2()
+
+
+# Function torch.
+def _torch():
+    import torch
+    return torch
+
+
+
+# Register a bank of feature names (the engine registers its own at load), so the column sets select its...
+def register_variant(variant: str, X: np.ndarray, names: list) -> None:
+    parts = [n.split("|") for n in names]
+    _FEAT_CACHE[variant] = {"X": X, "names": names, "fam": np.array([p[0] for p in parts]),
+                              "rb": np.array([p[1] for p in parts]), "link": np.array([p[2] for p in parts]),
+                              "chan": np.array([p[3] for p in parts]), "nm": np.array([p[4] for p in parts]),
+                              "keys": [str(i) for i in range(len(X))]}
+    _MASK_CACHE.clear()
+
+
+# A feature set registered by register_variant (the engine registers the live columns at load).
+def load_variant(variant: str) -> dict:
+    return _FEAT_CACHE[variant]
+
+
+# Function loso columns.
+def loso_columns(fset: str, variant: str = "dev", links: str = "all") -> np.ndarray:
+    return eval_columns(FConf(variant, fset, "mean@b08_35", links, "pc1-3", "perline_z"))
+
+
 # Class FConf.
 @dataclass(frozen=True)
 class FConf:
@@ -146,13 +139,6 @@ class FConf:
     links: str = "all"
     pc: str = "pc1-3"
     norm: str = "none"
-
-    # Function tag.
-    def tag(self) -> str:
-        return f"{self.variant}/{self.fset}/{self.ch}/{self.links}/{self.pc}/{self.norm}"
-
-
-_MASK_CACHE: dict = {}
 
 
 # Function eval columns.
@@ -188,18 +174,52 @@ def eval_columns(fc: FConf) -> np.ndarray:
 
 
 
-HP = {
-    "fs": 150.0, "stft": {"nperseg": 32, "noverlap": 24, "nfft": 64}, "band_hz": (4.0, 70.0), "n_freq": 28,
-    "win_frames": 34, "hop_frames": 4,
-    "channels": (16, 32, 32), "dropout": 0.3,
-    "lr": 1e-3, "weight_decay": 1e-4, "batch": 64, "steps": 3000, "seeds": (0, 1, 2, 3, 4),
-    "aug": {"time_mask_max": 4, "freq_mask_max": 2, "log_gain_sd": 0.2, "link_drop_p": 0.15, "noise_sd": 0.02},
-    "prob_floor": 1e-9, "temperature_grid": (-1.0, 1.5, 61),
-}
+# A feature member's standardiser, fitted in training: a window's features standardised against the...
+class Prior:
+
+    # Function impute.
+    def _impute(self, Xr):
+        Z = np.array(Xr, float)[:, self.ok]
+        r, c = np.nonzero(~np.isfinite(Z))
+        Z[r, c] = self.med[c]
+        return Z
+
+    # Function Z.
+    def Z(self, Xr):
+        return self._impute(Xr)[:, self.keep]
+
+    # Function zs.
+    def zs(self, Zrows, prows, Zref, pref):
+        out = np.empty_like(Zrows)
+        for p in np.unique(prows):
+            m = prows == p
+            rr = pref == p
+            if rr.sum() < 3:
+                rr = np.ones(len(pref), bool)
+            mu, sd = Zref[rr].mean(0), Zref[rr].std(0)
+            out[m] = (Zrows[m] - mu) / np.where(sd > 1e-9, sd, self.g_sd)
+        return out
+
+    # Function apply.
+    def apply(self, Xall, paths, rows, calib):
+        Zr = self.Z(Xall[rows])
+        if calib is not None and len(calib) >= 10:
+            return self.zs(Zr, paths[rows], self.Z(Xall[calib]), paths[calib])
+        return (Zr - self.g_mu) / self.g_sd
 
 
-FREQS = np.fft.rfftfreq(HP["stft"]["nfft"], 1.0 / HP["fs"])
-KEEP_F = (FREQS >= HP["band_hz"][0]) & (FREQS <= HP["band_hz"][1])
+# Function logp from proba.
+def logp_from_proba(P) -> np.ndarray:
+    return normalise_logp(np.log(np.clip(np.asarray(P, float), HP["prob_floor"], 1.0)))
+
+
+# Function order.
+def _order(L, cl):
+    out = np.full((L.shape[0], 6), np.log(HP["prob_floor"]))
+    for j, c in enumerate(cl):
+        out[:, CLASSES.index(str(c))] = L[:, j]
+    return normalise_logp(out)
+
 
 
 # (C, 28, n_frames) -> (n_windows, C, 28, win), from inside the pass only.
@@ -210,35 +230,17 @@ def windows(M: np.ndarray, win: int = HP["win_frames"], hop: int = HP["hop_frame
     return np.stack([M[..., s:s + win] for s in range(0, n - win + 1, hop)]).astype(np.float32)
 
 
-# Function torch.
-def _torch():
-    import torch
-    return torch
-
-
-# Function make net.
-def make_net(c_in: int, n_cls: int):
-    torch = _torch()
-    nn = torch.nn
-    c1, c2, c3 = HP["channels"]
-
-    # Class CNNv2.
-    class CNNv2(nn.Module):
-        # Sets up the object.
-        def __init__(self):
-            super().__init__()
-            self.f = nn.Sequential(
-                nn.Conv2d(c_in, c1, 3, padding=1), nn.BatchNorm2d(c1), nn.ReLU(), nn.MaxPool2d((1, 2)),
-                nn.Conv2d(c1, c2, 3, padding=1), nn.BatchNorm2d(c2), nn.ReLU(), nn.MaxPool2d((1, 2)),
-                nn.Conv2d(c2, c3, 3, padding=1), nn.BatchNorm2d(c3), nn.ReLU())
-            self.drop = nn.Dropout(HP["dropout"])
-            self.head = nn.Linear(c3 * HP["n_freq"] + 2, n_cls)
-
-        # Function forward.
-        def forward(self, x, d):
-            h = self.f(x).mean(-1).flatten(1)
-            return self.head(self.drop(torch.cat([h, d], 1)))
-    return CNNv2()
+# Function apply norm keyed.
+def apply_norm_keyed(Xw, dw, lw, st) -> np.ndarray:
+    out = np.empty_like(Xw)
+    for k in (0, 1):
+        for lay in (np.unique(lw) if lw is not None else ["*"]):
+            sel = (dw == k) & ((lw == lay) if lw is not None else True)
+            if not np.any(sel):
+                continue
+            mu, sd = st.get((lay, k), st[("*", k)])
+            out[sel] = (Xw[sel] - mu[None, :, None, None]) / sd[None, :, None, None]
+    return out
 
 
 # (n_pass, n_cls): the mean log-softmax over each pass's windows.
@@ -258,6 +260,14 @@ def pass_logp(net, Xw: np.ndarray, dirw: np.ndarray, pass_of: np.ndarray, n_pass
     return out / np.maximum(cnt, 1)[:, None]
 
 
+# Function normalise logp.
+def normalise_logp(L: np.ndarray) -> np.ndarray:
+    L = np.asarray(L, float)
+    m = L.max(1, keepdims=True)
+    return L - (m + np.log(np.exp(L - m).sum(1, keepdims=True)))
+
+
+
 # A copy of net whose BatchNorm running statistics are recomputed, in ONE forward pass with no labels and no...
 def adabn(net, Xw_other: np.ndarray, dirw_other: np.ndarray, device: str = "cpu"):
     torch = _torch()
@@ -275,55 +285,3 @@ def adabn(net, Xw_other: np.ndarray, dirw_other: np.ndarray, device: str = "cpu"
         net2(x, d)
     net2.eval()
     return net2
-
-
-# Function normalise logp.
-def normalise_logp(L: np.ndarray) -> np.ndarray:
-    L = np.asarray(L, float)
-    m = L.max(1, keepdims=True)
-    return L - (m + np.log(np.exp(L - m).sum(1, keepdims=True)))
-
-
-# Function logp from proba.
-def logp_from_proba(P) -> np.ndarray:
-    return normalise_logp(np.log(np.clip(np.asarray(P, float), HP["prob_floor"], 1.0)))
-
-
-
-# Make the bank a feature variant of the frozen idmax_eval, so its column sets select by name.
-def register_variant(variant: str, X: np.ndarray, names: list) -> None:
-    parts = [n.split("|") for n in names]
-    _FEAT_CACHE[variant] = {"X": X, "names": names, "fam": np.array([p[0] for p in parts]),
-                              "rb": np.array([p[1] for p in parts]), "link": np.array([p[2] for p in parts]),
-                              "chan": np.array([p[3] for p in parts]), "nm": np.array([p[4] for p in parts]),
-                              "keys": [str(i) for i in range(len(X))]}
-    _MASK_CACHE.clear()
-
-
-# Function loso columns.
-def loso_columns(fset: str, variant: str = "dev", links: str = "all") -> np.ndarray:
-    return eval_columns(FConf(variant, fset, "mean@b08_35", links, "pc1-3", "perline_z"))
-
-
-# Function order.
-def _order(L, cl):
-    out = np.full((L.shape[0], 6), np.log(HP["prob_floor"]))
-    for j, c in enumerate(cl):
-        out[:, CLASSES.index(str(c))] = L[:, j]
-    return normalise_logp(out)
-
-
-# Function apply norm keyed.
-def apply_norm_keyed(Xw, dw, lw, st) -> np.ndarray:
-    out = np.empty_like(Xw)
-    for k in (0, 1):
-        for lay in (np.unique(lw) if lw is not None else ["*"]):
-            sel = (dw == k) & ((lw == lay) if lw is not None else True)
-            if not np.any(sel):
-                continue
-            mu, sd = st.get((lay, k), st[("*", k)])
-            out[sel] = (Xw[sel] - mu[None, :, None, None]) / sd[None, :, None, None]
-    return out
-
-
-import pipeline.identification.recordings as IC

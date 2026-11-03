@@ -1,17 +1,46 @@
 # Author: Uzayr Ballim
 # Debugger: Claude
-# What the file does: I8, a walk's gait features: band-passing each receiver's subcarriers, reducing them to a few channels, the...
+# What the file does: The identification signal, in the order the engine uses it: a block of frames to amplitude (I6); then at a...
 
 from __future__ import annotations
 
 import numpy as np
 from scipy import signal
 
+import pipeline.identification.classifiers as C
 
 
 FS = 150.0
 STEP_LO, STEP_HI = 1.3, 2.8
 BANDS = {"b03_2": (0.3, 2.0), "b08_35": (0.8, 3.5), "dop": (4.0, 70.0), "full": (0.3, 70.0)}
+DROP = sorted({0, 1, 64} | set(range(27, 38)) | set(range(96, 104)))
+KEEP = np.array([i for i in range(128) if i not in DROP])
+NULL_SC = (93, 94, 95)
+SC = np.array([i for i, k in enumerate(KEEP) if k not in NULL_SC])
+CADENCE_CH = [("mean", "b08_35"), ("rms", "b08_35"), ("pca", "b08_35")]
+
+
+
+# Subcarrier amplitude from the raw interleaved int8 payload, vectorised over packets.
+def amplitude_from_frames(sub) -> np.ndarray:
+    d = np.asarray(sub["data"], np.int8).astype(np.float32)
+    imag, real = d[:, 0::2], d[:, 1::2]
+    return np.sqrt(imag * imag + real * real)
+
+
+
+# Hampel outlier removal per subcarrier, median window k, replace beyond n_sigma MAD.
+def c2_hampel(amp: np.ndarray, k: int = 7, n_sigma: float = 3.0) -> np.ndarray:
+    a = np.asarray(amp, float).copy()
+    if a.shape[0] < 2 * k + 1:
+        return a
+    from scipy.ndimage import median_filter
+    med = median_filter(a, size=(2 * k + 1, 1), mode="nearest")
+    mad = median_filter(np.abs(a - med), size=(2 * k + 1, 1), mode="nearest")
+    thr = n_sigma * 1.4826 * mad
+    bad = np.abs(a - med) > np.maximum(thr, 1e-12)
+    a[bad] = med[bad]
+    return a
 
 
 # Function bandpass.
@@ -43,6 +72,45 @@ def reduce_link(a: np.ndarray, band: str, reduction: str, n_pc: int = 6,
                 comp[i] = -comp[i]
         return comp
     raise ValueError(reduction)
+
+
+# Function interp cols.
+def _interp_cols(tq: np.ndarray, t: np.ndarray, a: np.ndarray) -> np.ndarray:
+    j = np.clip(np.searchsorted(t, tq) - 1, 0, len(t) - 2)
+    t0, t1 = t[j], t[j + 1]
+    w = np.clip((tq - t0) / np.maximum(t1 - t0, 1e-9), 0.0, 1.0)
+    if a.ndim == 1:
+        return a[j] * (1 - w) + a[j + 1] * w
+    return a[j] * (1 - w)[:, None] + a[j + 1] * w[:, None]
+
+
+
+# (f, P) with P (freq, frames): Hampel, then PCs 2 to 4 of the 4 to 70 Hz band, or every subcarrier when pca...
+def conditioned_spectrogram(seg: np.ndarray, pca: bool = True):
+    from scipy import signal
+    a = c2_hampel(seg)
+    X = reduce_link(a, "dop", "pca", n_pc=4)[1:] if pca else bandpass(a, "dop", axis=0).T
+    f, _t, Z = signal.stft(X, fs=FS, nperseg=32, noverlap=24, nfft=64, axis=-1, boundary=None, padded=False)
+    return f, (np.abs(Z) ** 2).sum(axis=0)
+
+
+
+# Function conditioned map v2.
+def conditioned_map_v2(a_link: np.ndarray) -> np.ndarray:
+    return _map_from_bmat(bandpass(np.asarray(a_link, float), "dop", axis=0))
+
+
+# The conditioned map from an already band-limited (4 to 70 Hz) pass: per-pass PCA (PCs 2 to 4, skew sign)...
+def _map_from_bmat(bm_dop: np.ndarray) -> np.ndarray:
+    from scipy import signal
+    P = reduce_link(bm_dop, "dop", "pca", n_pc=4, bmat=bm_dop)[1:]
+    s = C.HP["stft"]
+    _f, _t, Z = signal.stft(P, fs=C.HP["fs"], nperseg=s["nperseg"], noverlap=s["noverlap"], nfft=s["nfft"],
+                            axis=-1, boundary=None, padded=False)
+    mag = np.abs(Z).sum(axis=0)[C.KEEP_F]
+    eps = 1e-6 * (float(np.median(mag)) if mag.size and np.median(mag) > 0 else 1.0)
+    m = np.log(mag + eps)
+    return (m - m.mean()).astype(np.float32)
 
 
 
@@ -113,82 +181,8 @@ def resolve_cadence(estimate_sets: list) -> dict:
 
 
 
-DROP = sorted({0, 1, 64} | set(range(27, 38)) | set(range(96, 104)))
-
-
-KEEP = np.array([i for i in range(128) if i not in DROP])
-
-
-# Function interp cols.
-def _interp_cols(tq: np.ndarray, t: np.ndarray, a: np.ndarray) -> np.ndarray:
-    j = np.clip(np.searchsorted(t, tq) - 1, 0, len(t) - 2)
-    t0, t1 = t[j], t[j + 1]
-    w = np.clip((tq - t0) / np.maximum(t1 - t0, 1e-9), 0.0, 1.0)
-    if a.ndim == 1:
-        return a[j] * (1 - w) + a[j + 1] * w
-    return a[j] * (1 - w)[:, None] + a[j + 1] * w[:, None]
-
-
-NULL_SC = (93, 94, 95)
-SC = np.array([i for i, k in enumerate(KEEP) if k not in NULL_SC])
-CADENCE_CH = [("mean", "b08_35"), ("rms", "b08_35"), ("pca", "b08_35")]
-
-
-# Function columns v2.
+# The 630 gait columns the model reads, as indices into the bank's names.
 def columns_v2(bank) -> np.ndarray:
-    import pipeline.identification.classifiers as L
-    cols = L.loso_columns("U_all_gait")
+    cols = C.loso_columns("U_all_gait")
     names = np.array(bank["names"])
     return np.array([j for j in cols if not names[j].endswith("|dwt_6")])
-
-
-# The conditioned map from an already band-limited (4 to 70 Hz) pass: per-pass PCA (PCs 2 to 4, skew sign)...
-def _map_from_bmat(bm_dop: np.ndarray) -> np.ndarray:
-    from scipy import signal
-    P = reduce_link(bm_dop, "dop", "pca", n_pc=4, bmat=bm_dop)[1:]
-    s = C.HP["stft"]
-    _f, _t, Z = signal.stft(P, fs=C.HP["fs"], nperseg=s["nperseg"], noverlap=s["noverlap"], nfft=s["nfft"],
-                            axis=-1, boundary=None, padded=False)
-    mag = np.abs(Z).sum(axis=0)[C.KEEP_F]
-    eps = 1e-6 * (float(np.median(mag)) if mag.size and np.median(mag) > 0 else 1.0)
-    m = np.log(mag + eps)
-    return (m - m.mean()).astype(np.float32)
-
-
-# Function conditioned map v2.
-def conditioned_map_v2(a_link: np.ndarray) -> np.ndarray:
-    return _map_from_bmat(bandpass(np.asarray(a_link, float), "dop", axis=0))
-
-
-# Subcarrier amplitude from the raw interleaved int8 payload, vectorised over packets.
-def amplitude_from_frames(sub) -> np.ndarray:
-    d = np.asarray(sub["data"], np.int8).astype(np.float32)
-    imag, real = d[:, 0::2], d[:, 1::2]
-    return np.sqrt(imag * imag + real * real)
-
-
-# (f, P) with P (freq, frames): Hampel, then PCs 2 to 4 of the 4 to 70 Hz band, or every subcarrier when pca...
-def conditioned_spectrogram(seg: np.ndarray, pca: bool = True):
-    from scipy import signal
-    a = c2_hampel(seg)
-    X = reduce_link(a, "dop", "pca", n_pc=4)[1:] if pca else bandpass(a, "dop", axis=0).T
-    f, _t, Z = signal.stft(X, fs=FS, nperseg=32, noverlap=24, nfft=64, axis=-1, boundary=None, padded=False)
-    return f, (np.abs(Z) ** 2).sum(axis=0)
-
-
-
-# Hampel outlier removal per subcarrier, median window k, replace beyond n_sigma MAD.
-def c2_hampel(amp: np.ndarray, k: int = 7, n_sigma: float = 3.0) -> np.ndarray:
-    a = np.asarray(amp, float).copy()
-    if a.shape[0] < 2 * k + 1:
-        return a
-    from scipy.ndimage import median_filter
-    med = median_filter(a, size=(2 * k + 1, 1), mode="nearest")
-    mad = median_filter(np.abs(a - med), size=(2 * k + 1, 1), mode="nearest")
-    thr = n_sigma * 1.4826 * mad
-    bad = np.abs(a - med) > np.maximum(thr, 1e-12)
-    a[bad] = med[bad]
-    return a
-
-
-import pipeline.identification.classifiers as C

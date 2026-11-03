@@ -1,6 +1,6 @@
 # Author: Uzayr Ballim
 # Debugger: Claude
-# What the file does: T4, the frozen tracker: everything tracking needs, read from runs/public_model/tracking/f05_A3/ and...
+# What the file does: T3, the pre-flight: before a run on the boards, every model file must match its fingerprint (sha256), the...
 
 from __future__ import annotations
 
@@ -20,44 +20,7 @@ PUBLIC = J(REPO_ROOT, "runs", "public_model")
 TRACKER = J(PUBLIC, "tracking", "f05_A3")
 ID_HASHES = J(PUBLIC, "identification_hashes.txt")
 
-DISPLAY_PROFILES = {
-    "clean_1s_r0": {"candidate": "K1gf", "end_head": False, "sd_scale": 3.0,
-                    "sett": {"prior_arm": "flatten_0.50", "prior_f": 0.5, "shift_w": 1.0, "head_offset_s": 1.0,
-                             "switch": {"arm": "A", "theta": 2.0, "max_switches": 1, "final_m": 1.0, "radius_m": None}},
-                    "gate_ref": "FCC.relgateU+abstain+a2w0.25+sd3.0",
-                    "source": "runs/switch_radius_ship_2026-10-14/SHIP_PLAN.md (Uzayr, 14 Oct): clean_1s with the switch "
-                              "radius removed"}}
 DISPLAY_PROFILE = "clean_1s_r0"
-
-
-# The frozen tracker, loaded: the decode pieces (pieces.pkl), the five networks, the start terms, and the...
-class Tracker:
-
-    # Sets up the object.
-    def __init__(self, folder: str = TRACKER):
-        self.folder = folder
-        with open(J(folder, "meta.json"), encoding="utf-8") as f:
-            self.meta = json.load(f)
-        meta = self.meta
-        if DISPLAY_PROFILES[meta["display_profile"]]["end_head"]:
-            raise SystemExit("REFUSED: the frozen tracker's display profile draws with a separate end head, which the "
-                             "app does not have")
-        decoder.set_pace(meta["pace"]["v_mean"], meta["pace"]["v_sd"], meta["DT"])
-        with open(J(folder, "pieces.pkl"), "rb") as f:
-            self.pieces = pickle.load(f)
-        with open(J(folder, "readers.pkl"), "rb") as f:
-            readers = pickle.load(f)
-        pz = self.pieces
-        self.st, self.cfg, self.ne, self.transit = pz["st"], pz["cfg"], pz["ne"], pz["transit"]
-        self.opts, self.display_settings = pz["opts"], pz["settings"]
-        self.networks = Networks(folder, meta, pz)
-        self.start_terms = StartTerms(folder, meta, readers, pz["st"])
-        self.G0 = float(meta["G0"])
-
-
-# The frozen tracker from its folder.
-def load(folder: str = TRACKER) -> Tracker:
-    return Tracker(folder)
 
 
 
@@ -88,12 +51,6 @@ def preflight(baseline: str = None, at: float = None, folder: str = TRACKER, boa
     return chk
 
 
-# Function print checks.
-def print_checks(chk: dict) -> None:
-    for k, v in chk.items():
-        print(f"  {'ok  ' if v else 'FAIL'} {k}", flush=True)
-
-
 # (every file in the listing matches its sha256, how many were checked).
 def hashes_ok(listing: str, root: str) -> tuple:
     if not os.path.exists(listing):
@@ -114,17 +71,36 @@ def hashes_ok(listing: str, root: str) -> tuple:
     return True, n
 
 
-# HASHES.txt beside a frozen folder's files: sha256 and the path relative to the folder, one per line.
-def write_hashes(folder: str) -> str:
-    lines = []
-    for dp, _dn, fn in sorted(os.walk(folder)):
-        for f in sorted(fn):
-            if f == "HASHES.txt" or f == ".DS_Store":
-                continue
-            p = J(dp, f)
-            with open(p, "rb") as g:
-                lines.append(f"{hashlib.sha256(g.read()).hexdigest()}  {os.path.relpath(p, folder)}")
-    out = J(folder, "HASHES.txt")
-    with open(out, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
-    return out
+# Function print checks.
+def print_checks(chk: dict) -> None:
+    for k, v in chk.items():
+        print(f"  {'ok  ' if v else 'FAIL'} {k}", flush=True)
+
+
+
+# The frozen tracker from its folder.
+def load(folder: str = TRACKER) -> Tracker:
+    return Tracker(folder)
+
+
+# The frozen tracker, loaded: the decode pieces (pieces.pkl), the five networks, the start terms, and the...
+class Tracker:
+
+    # Sets up the object.
+    def __init__(self, folder: str = TRACKER):
+        self.folder = folder
+        with open(J(folder, "meta.json"), encoding="utf-8") as f:
+            self.meta = json.load(f)
+        meta = self.meta
+        decoder.set_pace(meta["pace"]["v_mean"], meta["pace"]["v_sd"], meta["DT"])
+        with open(J(folder, "pieces.pkl"), "rb") as f:
+            pz = pickle.load(f)
+        with open(J(folder, "readers.pkl"), "rb") as f:
+            readers = pickle.load(f)
+        if meta["display_profile"] != DISPLAY_PROFILE or pz["settings"]["shipped_display"] != "DISP_END":
+            raise SystemExit(f"REFUSED: the frozen tracker's display is not the app's ({DISPLAY_PROFILE})")
+        self.st, self.cfg, self.ne, self.transit = pz["st"], pz["cfg"], pz["ne"], pz["transit"]
+        self.opts = pz["opts"]
+        self.networks = Networks(folder, meta, pz)
+        self.start_terms = StartTerms(folder, meta, readers, pz["st"])
+        self.G0 = float(meta["G0"])

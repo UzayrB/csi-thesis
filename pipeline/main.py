@@ -45,64 +45,6 @@ def app(argv=None) -> int:
     return identification_steps(a.minutes, focus_back=not a.no_focus_return)
 
 
-# Tracking's steps in order: find the receivers (T1), record the 60 s baseline (T2, skipped with...
-def tracking_steps(baseline: str = None, minutes: float = None) -> int:
-    from pipeline.tracking.run import on_the_boards
-    from pipeline.tracking.tracker import preflight, print_checks
-    if baseline is None:
-        ports = ports_text()
-        print(f"Receivers: {ports}", flush=True)
-        baseline = record_baseline(ports)
-    chk = preflight(baseline)
-    print_checks(chk)
-    if not chk["ALL"]:
-        raise SystemExit("REFUSED: the pre-flight failed (every line must read ok); tracking did not start")
-    return on_the_boards(baseline, minutes)
-
-
-# Identification on the boards, each walk's path picked on the map (I1 to I9).
-def identification_steps(minutes: float = None, focus_back: bool = True) -> int:
-    from pipeline.identification.run import on_the_boards
-    return on_the_boards(popup=True, minutes=minutes, focus_back=focus_back)
-
-
-# The three receivers' ports by MAC address, as RX1=<port>,RX2=<port>,RX3=<port>.
-def ports_text() -> str:
-    from pipeline.io.boards import receiver_ports
-    nodes = receiver_ports()
-    return ",".join(f"{k}={v}" for k, v in sorted(nodes.items()))
-
-
-# The 60 s empty-room capture, recorded now; returns its folder (the one the capture added).
-def record_baseline(ports: str) -> str:
-    input("BASELINE: nobody walks and the operator sits still for 60 s. Press Enter to start the capture. ")
-    root = os.path.join(REPO_ROOT, BASELINES)
-    before = set(os.listdir(root)) if os.path.isdir(root) else set()
-    cmd = [sys.executable, "-m", "pipeline.io.serial_capture", "--duration", "60", "--out", BASELINES, "--nodes", ports,
-           "--reset", "--interval", "10"]
-    print("  $ " + " ".join(cmd), flush=True)
-    rc = subprocess.call(cmd, cwd=REPO_ROOT)
-    if rc != 0:
-        raise SystemExit(f"REFUSED: the baseline capture failed (exit {rc}); tracking did not start")
-    new = sorted(d for d in set(os.listdir(root)) - before if os.path.isdir(os.path.join(root, d)))
-    if len(new) != 1:
-        raise SystemExit(f"REFUSED: expected one new capture folder under {BASELINES}, found {new}")
-    return os.path.join(BASELINES, new[0])
-
-
-# NO BOARDS: a recorded walk, <session>/<stem>, tracked in real time.
-def stream(spec: str, speed: float = None, screen: str = None, window: bool = True) -> int:
-    from pipeline.tracking.run import stream as run_stream
-    if "/" not in spec:
-        raise SystemExit("REFUSED: --stream <session>/<stem>, e.g. B2/participant_PA5_walk")
-    if speed not in (None, 1.0):
-        raise SystemExit("REFUSED: --speed must be 1: the app fits each receiver's clock to the packets' arrival times and "
-                         "refuses a clock rate far from real time, so a faster stream never starts")
-    session, stem = spec.split("/", 1)
-    run_stream(session, stem, 1.0, window=window, screen_dir=os.path.abspath(screen) if screen else None)
-    return 0
-
-
 
 # The start window, shown until Start or Cancel: "tracking" or "identification", or None when cancelled.
 def start_window():
@@ -149,6 +91,67 @@ def build_start_window(headless: bool = False):
 
 
 
+# Tracking's steps in order: find the receivers (T1), record the 60 s baseline (T2, skipped with...
+def tracking_steps(baseline: str = None, minutes: float = None) -> int:
+    from pipeline.tracking.run import on_the_boards
+    from pipeline.tracking.tracker import preflight, print_checks
+    if baseline is None:
+        ports = ports_text()
+        print(f"Receivers: {ports}", flush=True)
+        baseline = record_baseline(ports)
+    chk = preflight(baseline)
+    print_checks(chk)
+    if not chk["ALL"]:
+        raise SystemExit("REFUSED: the pre-flight failed (every line must read ok); tracking did not start")
+    return on_the_boards(baseline, minutes)
+
+
+# The three receivers' ports by MAC address, as RX1=<port>,RX2=<port>,RX3=<port>.
+def ports_text() -> str:
+    from pipeline.io.boards import receiver_ports
+    nodes = receiver_ports()
+    return ",".join(f"{k}={v}" for k, v in sorted(nodes.items()))
+
+
+# The 60 s empty-room capture, recorded now; returns its folder (the one the capture added).
+def record_baseline(ports: str) -> str:
+    input("BASELINE: nobody walks and the operator sits still for 60 s. Press Enter to start the capture. ")
+    root = os.path.join(REPO_ROOT, BASELINES)
+    before = set(os.listdir(root)) if os.path.isdir(root) else set()
+    cmd = [sys.executable, "-m", "pipeline.io.serial_capture", "--duration", "60", "--out", BASELINES, "--nodes", ports,
+           "--reset", "--interval", "10"]
+    print("  $ " + " ".join(cmd), flush=True)
+    rc = subprocess.call(cmd, cwd=REPO_ROOT)
+    if rc != 0:
+        raise SystemExit(f"REFUSED: the baseline capture failed (exit {rc}); tracking did not start")
+    new = sorted(d for d in set(os.listdir(root)) - before if os.path.isdir(os.path.join(root, d)))
+    if len(new) != 1:
+        raise SystemExit(f"REFUSED: expected one new capture folder under {BASELINES}, found {new}")
+    return os.path.join(BASELINES, new[0])
+
+
+
+# Identification on the boards, each walk's path picked on the map (I1 to I9).
+def identification_steps(minutes: float = None, focus_back: bool = True) -> int:
+    from pipeline.identification.run import on_the_boards
+    return on_the_boards(minutes=minutes, focus_back=focus_back)
+
+
+
+# NO BOARDS: a recorded walk, <session>/<stem>, tracked in real time.
+def stream(spec: str, speed: float = None, screen: str = None, window: bool = True) -> int:
+    from pipeline.tracking.run import stream as run_stream
+    if "/" not in spec:
+        raise SystemExit("REFUSED: --stream <session>/<stem>, e.g. B2/participant_PA5_walk")
+    if speed not in (None, 1.0):
+        raise SystemExit("REFUSED: --speed must be 1: the app fits each receiver's clock to the packets' arrival times and "
+                         "refuses a clock rate far from real time, so a faster stream never starts")
+    session, stem = spec.split("/", 1)
+    run_stream(session, stem, 1.0, window=window, screen_dir=os.path.abspath(screen) if screen else None)
+    return 0
+
+
+
 # Function main.
 def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -168,7 +171,6 @@ def main(argv=None) -> int:
     t = sub.add_parser("track", help="T4 to T11, ON THE BOARDS: tracking (opens the serial ports)")
     t.add_argument("--baseline", required=True, help="this session's 60 s empty-room capture (a folder with RX1-3.bin)")
     t.add_argument("--minutes", type=float, default=None)
-    t.add_argument("--mode", choices=("semi", "full"), default="semi")
     sub.add_parser("identify", help="I1 to I9, ON THE BOARDS: identification (opens the serial ports; --help for its "
                    "options)", add_help=False)
     s = sub.add_parser("stream", help="TR, NO BOARDS: tracking on a recorded walk from data/, streamed in real time")
@@ -193,7 +195,7 @@ def main(argv=None) -> int:
         from pipeline.tracking.run import on_the_boards
         if not os.path.isdir(a.baseline):
             raise SystemExit("REFUSED: --baseline <dir> is required: this session's own 60 s empty-room capture")
-        return on_the_boards(a.baseline, a.minutes, a.mode)
+        return on_the_boards(a.baseline, a.minutes)
     return stream(a.stream, a.speed, a.screen, window=not a.no_window)
 
 

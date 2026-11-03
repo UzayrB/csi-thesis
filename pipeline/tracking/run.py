@@ -21,7 +21,7 @@ from pipeline.io.signals import DEVICE_CLOCK_MODULUS_US, WRAP_MARGIN_US, baselin
 from pipeline.tracking import networks
 from pipeline.tracking.screen import Screen
 from pipeline.tracking.session import Logger, Session
-from pipeline.tracking.settings import force_cpu, name_text, pa_text
+from pipeline.tracking.settings import name_text, pa_text
 from pipeline.tracking.tracker import DISPLAY_PROFILE, TRACKER, load, preflight, print_checks
 
 J = os.path.join
@@ -31,8 +31,8 @@ KEYS_TITLE_TRACKING = "tracking: press SPACE in the Terminal window, not here"
 
 
 # ON THE BOARDS: opens the serial ports.
-def on_the_boards(baseline: str, minutes: float = None, mode: str = "semi", folder: str = TRACKER) -> int:
-    force_cpu()
+def on_the_boards(baseline: str, minutes: float = None, folder: str = TRACKER) -> int:
+    networks.use_cpu()
     steps = RigSteps(4)
     print("TRACKING, the live app on the boards: starting", flush=True)
     steps.step("Pre-flight: checking the shipped model's files and the baseline")
@@ -45,88 +45,27 @@ def on_the_boards(baseline: str, minutes: float = None, mode: str = "semi", fold
     steps.step("Naming the boards by their MAC addresses")
     nodes = receiver_ports()
     steps.done(", ".join(f"{k} on {v}" for k, v in sorted(nodes.items())))
-    cell = tracker.meta["cell"]
     s = Session(tracker, session="live", stem=time.strftime("rig_final_%Y%m%d_%H%M%S"),
-                baseline=session_baseline(baseline), mode=mode)
-    print(f"mode {mode}: " + ("SPACE once per walk, at the start tape" if mode == "semi" else "SPACE at the start and at the end"))
+                baseline=session_baseline(baseline))
     log = Logger(s)
-
-    # Class Logged Consumer.
-    class LoggedConsumer(TrackingConsumer):
-        ticks, redraws = 0, 0
-
-        # Function handle.
-        def handle(self, r):
-            log.event(time.monotonic())
-            super().handle(r)
-
-        # Function tick.
-        def tick(self, now):
-            log.event(time.monotonic())
-            super().tick(now)
-            self.ticks += 1
-            self.redraws += int(self.last_draw == now)
-
     steps.step("Opening the tracking window")
-    con = LoggedConsumer(s, Screen(s.st, headless=False, title=KEYS_TITLE_TRACKING))
+    con = LoggedConsumer(s, Screen(s.st, headless=False, title=KEYS_TITLE_TRACKING), log)
     steps.done()
     rig_banner(["READY.",
                 "Click on THIS Terminal window: the keys are read here, not in the plot window.",
-                "Stand still for 10 s, then press SPACE once as each walk starts (at the start tape)."
-                if mode == "semi" else "Press SPACE at the start and again at the end of each walk.",
+                "Stand still for 10 s, then press SPACE once as each walk starts (at the start tape).",
                 "q quits."])
+    rc = None
     try:
         rc = run(con, nodes, duration=minutes * 60.0 if minutes else None, mode="tracking", stem=s.stem,
-                 run_config={"model": "final", "mode": mode, "cell": cell,
+                 run_config={"model": "final", "mode": "semi", "cell": tracker.meta["cell"],
                              "display_profile": DISPLAY_PROFILE, "baseline": os.path.abspath(baseline)})
     finally:
-        log.event(time.monotonic())
-        close_error = None
-        try:
-            s.close()
-        except Exception as e:
-            close_error = f"{type(e).__name__}: {e}"
-        log.finish()
-        rec = getattr(con, "record_dir", None)
-        if rec:
-            with open(J(rec, f"{s.stem}.log.jsonl"), "w", encoding="utf-8") as f:
-                for r_ in log.rows:
-                    f.write(json.dumps(r_, default=float) + "\n")
-            with open(J(rec, f"{s.stem}.gt.json"), "w", encoding="utf-8") as f:
-                json.dump({"rig": True, "mode": mode, "baseline": os.path.abspath(baseline),
-                           "baseline_capture": os.path.abspath(baseline), "session": "live",
-                           "cell": cell, "display_profile": DISPLAY_PROFILE,
-                           "passes": [{"pass_id": int(pid), "t_start": float(p["press"]),
-                                       "t_end": (float(p["end"]) if mode == "full" and p.get("end") is not None else None)}
-                                      for pid, p in sorted(s.passes.items())]}, f, indent=1)
-            ws = [float(x) for x, prov in s.timing["window_s"] if not prov]
-            dots = [r_ for r_ in log.rows if r_["kind"] == "dot" and r_.get("computed_at") is not None]
-            lag = [max(0.0, float(r_["computed_at"]) - float(r_["x"])) for r_ in dots]
-            lock_late = [float(r_["at"]) - (float(s.passes[r_["pid"]]["press"]) + 2.0)
-                         for r_ in log.rows if r_["kind"] == "lock" and r_["pid"] in s.passes]
-            q_ = lambda v, p_: float(np.percentile(v, p_)) if v else None
-            with open(J(rec, f"{s.stem}.summary.json"), "w", encoding="utf-8") as f:
-                json.dump({"device": str(networks.device()), "display_profile": DISPLAY_PROFILE, "mode": mode,
-                           "preflight": chk, "passes": len(s.passes), "committed": len(s.decisions),
-                           "locks": len(log.locks), "frames": log.n_frames, "ticks": con.ticks, "redraws": con.redraws,
-                           "window_service_s": {"median": q_(ws, 50), "p95": q_(ws, 95), "max": max(ws) if ws else None,
-                                                "n": len(ws), "values": ws},
-                           "press_service_s": {"median": q_(s.timing["press_s"], 50),
-                                               "max": max(s.timing["press_s"]) if s.timing["press_s"] else None,
-                                               "values": [float(x) for x in s.timing["press_s"]]},
-                           "draw_lag_s": {"median": q_(lag, 50), "max": max(lag) if lag else None,
-                                          "frames_late_over_0.1s": int(sum(x > 0.1 for x in lag)),
-                                          "frames_late_over_0.5s": int(sum(x > 0.5 for x in lag)), "n": len(lag)},
-                           "lock_late_s": {"median": q_(lock_late, 50), "max": max(lock_late) if lock_late else None},
-                           "exit": rc if "rc" in locals() else None, "close_error": close_error,
-                           "receiver_outages": con.outages,
-                           "walks_overlapping_an_outage": sorted(int(pid) for pid, p in s.passes.items()
-                                                                 for o in con.outages if p["press"] - 1.0 <= (o["to"] or np.inf)
-                                                                 and p["press"] + 10.0 >= o["from"])}, f, indent=1, default=str)
+        write_record(con, s, log, chk, baseline, tracker.meta["cell"], rc)
     os.makedirs(J(REPO_ROOT, "runs", "live", "rig"), exist_ok=True)
     with open(J(REPO_ROOT, "runs", "live", "rig", f"{s.stem}.json"), "w", encoding="utf-8") as f:
-        json.dump({**con.summary(), "model": "final", "mode": mode, "stats": s.stats,
-                   "decisions_full": s.decisions_full, "first_lock": s.first_lock, "lock_changes": s.lock_changes},
+        json.dump({**con.summary(), "model": "final", "mode": "semi", "stats": s.stats,
+                   "first_lock": s.first_lock, "lock_changes": s.lock_changes},
                   f, indent=1, default=str)
     return rc
 
@@ -143,7 +82,7 @@ class TrackingConsumer:
         self.held = {n: {} for n in self.nodes}
         self.keys = queue.Queue()
         self.stop = threading.Event()
-        self.pid, self.open = 0, False
+        self.pid = 0
         self.last_draw = 0.0
         self.refused = None
         self.last_pkt = {}
@@ -199,16 +138,8 @@ class TrackingConsumer:
             if ev.key == "q":
                 self.stop.set()
             elif ev.key == " ":
-                if getattr(self.s, "mode", None) == "semi":
-                    self.pid += 1
-                    self._press(self.pid, ev.t_mono)
-                    continue
-                if not self.open:
-                    self.pid += 1
-                    self._press(self.pid, ev.t_mono)
-                else:
-                    self.s.end_press(self.pid, ev.t_mono)
-                self.open = not self.open
+                self.pid += 1
+                self._press(self.pid, ev.t_mono)
         if self.screen is not None and now - self.last_draw >= REFRESH_S:
             self.last_draw = now
             self.screen.tracking(**self.s.screen_state(now))
@@ -218,7 +149,29 @@ class TrackingConsumer:
         return {"passes": self.pid, "decisions": self.s.decisions, "timing": {k: len(v) for k, v in self.s.timing.items()}}
 
 
-# Windows.load_node's amplitude, for one record: sqrt(I^2 + Q^2) over 128 subcarriers.
+# The board run's consumer: every packet and tick also stamped in the log (T11), and the screen's redraws...
+class LoggedConsumer(TrackingConsumer):
+    ticks, redraws = 0, 0
+
+    # Sets up the object.
+    def __init__(self, session, screen, log):
+        super().__init__(session, screen)
+        self.log = log
+
+    # Function handle.
+    def handle(self, r):
+        self.log.event(time.monotonic())
+        super().handle(r)
+
+    # Function tick.
+    def tick(self, now):
+        self.log.event(time.monotonic())
+        super().tick(now)
+        self.ticks += 1
+        self.redraws += int(self.last_draw == now)
+
+
+# One record's amplitude, as signals.load_node makes it from a file: sqrt(I^2 + Q^2) over 128 subcarriers.
 def amplitude(data) -> np.ndarray:
     d = np.asarray(data, np.int8).astype(np.float32).reshape(128, 2)
     return np.sqrt((d ** 2).sum(-1))
@@ -262,6 +215,54 @@ class CausalAnchor:
 
 
 
+# The session closed and the log finished, then (when the run was recorded) the log, the sidecar of presses...
+def write_record(con, s, log, chk: dict, baseline: str, cell, rc) -> None:
+    log.event(time.monotonic())
+    close_error = None
+    try:
+        s.close()
+    except Exception as e:
+        close_error = f"{type(e).__name__}: {e}"
+    log.finish()
+    rec = getattr(con, "record_dir", None)
+    if rec:
+        with open(J(rec, f"{s.stem}.log.jsonl"), "w", encoding="utf-8") as f:
+            for r_ in log.rows:
+                f.write(json.dumps(r_, default=float) + "\n")
+        with open(J(rec, f"{s.stem}.gt.json"), "w", encoding="utf-8") as f:
+            json.dump({"rig": True, "mode": "semi", "baseline": os.path.abspath(baseline),
+                       "baseline_capture": os.path.abspath(baseline), "session": "live",
+                       "cell": cell, "display_profile": DISPLAY_PROFILE,
+                       "passes": [{"pass_id": int(pid), "t_start": float(p["press"]),
+                                   "t_end": None}
+                                  for pid, p in sorted(s.passes.items())]}, f, indent=1)
+        ws = [float(x) for x, prov in s.timing["window_s"] if not prov]
+        dots = [r_ for r_ in log.rows if r_["kind"] == "dot" and r_.get("computed_at") is not None]
+        lag = [max(0.0, float(r_["computed_at"]) - float(r_["x"])) for r_ in dots]
+        lock_late = [float(r_["at"]) - (float(s.passes[r_["pid"]]["press"]) + 2.0)
+                     for r_ in log.rows if r_["kind"] == "lock" and r_["pid"] in s.passes]
+        q_ = lambda v, p_: float(np.percentile(v, p_)) if v else None
+        with open(J(rec, f"{s.stem}.summary.json"), "w", encoding="utf-8") as f:
+            json.dump({"device": str(networks.device()), "display_profile": DISPLAY_PROFILE, "mode": "semi",
+                       "preflight": chk, "passes": len(s.passes), "committed": len(s.decisions),
+                       "locks": len(log.locks), "frames": log.n_frames, "ticks": con.ticks, "redraws": con.redraws,
+                       "window_service_s": {"median": q_(ws, 50), "p95": q_(ws, 95), "max": max(ws) if ws else None,
+                                            "n": len(ws), "values": ws},
+                       "press_service_s": {"median": q_(s.timing["press_s"], 50),
+                                           "max": max(s.timing["press_s"]) if s.timing["press_s"] else None,
+                                           "values": [float(x) for x in s.timing["press_s"]]},
+                       "draw_lag_s": {"median": q_(lag, 50), "max": max(lag) if lag else None,
+                                      "frames_late_over_0.1s": int(sum(x > 0.1 for x in lag)),
+                                      "frames_late_over_0.5s": int(sum(x > 0.5 for x in lag)), "n": len(lag)},
+                       "lock_late_s": {"median": q_(lock_late, 50), "max": max(lock_late) if lock_late else None},
+                       "exit": rc, "close_error": close_error,
+                       "receiver_outages": con.outages,
+                       "walks_overlapping_an_outage": sorted(int(pid) for pid, p in s.passes.items()
+                                                             for o in con.outages if p["press"] - 1.0 <= (o["to"] or np.inf)
+                                                             and p["press"] + 10.0 >= o["from"])}, f, indent=1, default=str)
+
+
+
 OUT = J(REPO_ROOT, "runs", "live", "stream")
 
 
@@ -280,7 +281,7 @@ NO_DATA = ("REFUSED: --stream needs the recordings in data/: download room_A_ano
 # NO BOARDS: a recorded walk from data/, streamed in real time through the boards' path (run_capture with...
 def stream(session: str, stem: str, speed: float = 1.0, window: bool = True, screen_dir: str = None,
            folder: str = TRACKER) -> dict:
-    force_cpu()
+    networks.use_cpu()
     os.chdir(REPO_ROOT)
     shown, stem = pa_text(stem), name_text(stem)
     sdir, frames, sidecar = load_recording(session, stem)
