@@ -978,6 +978,26 @@ class PathPopup:
             subprocess.Popen(["open", "-a", app], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+# Make this process the active app (macOS), so its window comes in front of the Terminal and takes a click...
+def bring_to_front() -> None:
+    import sys
+    if sys.platform != "darwin":
+        return
+    try:
+        import ctypes
+        import ctypes.util
+        objc = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc"))
+        objc.objc_getClass.restype = objc.sel_registerName.restype = ctypes.c_void_p
+        objc.objc_getClass.argtypes = objc.sel_registerName.argtypes = [ctypes.c_char_p]
+        send = objc.objc_msgSend
+        send.restype, send.argtypes = ctypes.c_void_p, [ctypes.c_void_p, ctypes.c_void_p]
+        app = send(objc.objc_getClass(b"NSApplication"), objc.sel_registerName(b"sharedApplication"))
+        send.restype, send.argtypes = ctypes.c_void_p, [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_bool]
+        send(app, objc.sel_registerName(b"activateIgnoringOtherApps:"), True)
+    except Exception:
+        pass
+
+
 # The live identification window: one window for every walk, in three stages.
 class IdentifyWindow(EngineScreen):
 
@@ -1011,8 +1031,21 @@ class IdentifyWindow(EngineScreen):
         self.art = {}
         self._build_map()
         self.fig.canvas.mpl_connect("button_press_event", self._click)
+        self.key_sink = None
+        mgr = self.fig.canvas.manager
+        if mgr is not None and getattr(mgr, "key_press_handler_id", None) is not None:
+            self.fig.canvas.mpl_disconnect(mgr.key_press_handler_id)
+        self.fig.canvas.mpl_connect("key_press_event", self._key)
         self._page()
         self._restyle()
+
+    # A key pressed in this window: q and n act as in the Terminal; SPACE, a and t stay the Terminal's (their...
+    def _key(self, ev) -> None:
+        if ev.key in ("q", "n") and self.key_sink is not None:
+            self.key_sink(ev.key)
+        elif ev.key in (" ", "a", "t"):
+            print(f"IDENTIFICATION: {'SPACE' if ev.key == ' ' else ev.key} is read in the Terminal: press Done, then "
+                  "the key there.", flush=True)
 
     # Function build map.
     def _build_map(self) -> None:
@@ -1096,6 +1129,8 @@ class IdentifyWindow(EngineScreen):
         self.ready = (float(t), path)
         self.phase = "walk"
         self._n0 = int(n_decisions)
+        if self.focus_back:
+            bring_to_front()
 
     # The walk's windows are all closed: its result (or that it gave none) and the Next button.
     def walk_ended(self, n_decisions: int) -> None:
@@ -1195,6 +1230,11 @@ class EngineConsumer:
         self.silent = set()
         self.popup = None
         self.refused = 0
+
+    # Q or n pressed in the identification window: into the same key queue (and key record) as the Terminal's.
+    def window_key(self, key: str) -> None:
+        from pipeline.live.RunLive.boards_run import KeyEvent
+        (getattr(self, "key_input", None) or self.keys).put(KeyEvent(key, time.monotonic(), time.time()))
 
     # Function handle.
     def handle(self, rec) -> None:
@@ -1466,6 +1506,7 @@ def cmd_rig(a) -> int:
         win = IdentifyWindow(headless=False, layout=layout, focus_back=not a.no_focus_return)
         c = EngineConsumer(app, win)
         c.popup = win
+        win.key_sink = c.window_key
     else:
         c = EngineConsumer(app, EngineScreen(headless=False, layout=layout))
     steps.done()
@@ -1473,7 +1514,8 @@ def cmd_rig(a) -> int:
                 "Click on THIS Terminal window: the keys are read here, not in the plot window.",
                 ("In the identification window: click the walk's path on the map, then Done. Then press SPACE here as the "
                  "walker starts. After the result, Next identification walk goes back to the map (the last path stays "
-                 "picked). a / t = line A (away from / towards the TX); n = a new walker; q quits." if popup else
+                 "picked). The window comes back in front after SPACE, so Next takes one click. a / t = line A (away from / "
+                 "towards the TX); n = a new walker; q quits (n and q work in the window too)." if popup else
                  "a (away from the TX) or t (towards it) once as each walker starts on line A; n = a new walker; q quits."),
                 "Keep the plot window visible during a walk (a hidden window can be slowed by macOS)."])
     rc = run(c, nodes, duration=a.minutes * 60.0 if a.minutes else None, mode="identify", stem=stem,
@@ -1605,7 +1647,7 @@ def main(argv=None) -> int:
                    help="pick each walk's path on a pop-up map of the twelve paths, then SPACE starts it (the app turns "
                         "this on); without it only a and t start a line-A walk")
     k.add_argument("--no-focus-return", action="store_true",
-                   help="with --popup: do not give the keyboard back to the Terminal after a click on the map")
+                   help="with --popup: do not give the keyboard to the Terminal at Done, nor the window back after SPACE")
     k.add_argument("--extract-workers", type=int, default=None, help=EXTRACT_HELP)
     k.add_argument("--model", default=None, help="recorded source only: a model that never saw the session "
                    "(default: the final loso_<session>); the boards always load the deployment model's manifest")

@@ -181,6 +181,7 @@ def run(consumer, nodes: dict, duration=None, mode: str = "tracking", stem: str 
     if rec:
         os.makedirs(rec, exist_ok=True)
     tee, states, stop_keys = KeyTee(consumer.keys), {}, threading.Event()
+    consumer.key_input = tee
     meta = {"mode": mode, "stem": stem, "nodes": dict(nodes), "started": time.strftime("%Y-%m-%d %H:%M:%S"),
             "run_config": run_config or {}}
     rc = None

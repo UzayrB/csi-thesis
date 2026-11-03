@@ -135,12 +135,14 @@ Walks can be on any of the twelve paths. One window opens, and every walk goes t
 
 1. The map of the twelve paths: click the walk's path (one click gives its line and direction), then press **Done**.
 2. The window waits: press SPACE in the Terminal as the walker starts. After Done the keyboard goes back to the Terminal
-   (Terminal, iTerm or VS Code); otherwise click on the Terminal first. SPACE counts only after Done, once per Done.
-3. The result. **Next identification walk** goes back to the map with the last path still picked, so repeating a path
-   is Done, then SPACE.
+   (Terminal, iTerm or VS Code); otherwise click on the Terminal first. SPACE counts only after Done, once per Done,
+   and it brings the window back in front by itself.
+3. The result. **Next identification walk** (one click) goes back to the map with the last path still picked, so
+   repeating a path is Done, then SPACE.
 
 SPACE before Done, during a walk or on a result is refused, with what to press instead. `a` and `t` start a line-A walk
-(away from or towards the TX) from the map or the waiting page, `n` marks a new person and q stops. The path is given
+(away from or towards the TX) from the map or the waiting page, `n` marks a new person (it resets the on-screen tally)
+and q stops; `n` and `q` also work in the identification window. The path is given
 rather than detected: the engine's direction detector covers line A only, and with RX2 at its tracking position it is
 right on 90.83 % of 120 line-A walks (96.9 % of 419 with RX2 beside the transmitter), below its 95 % rule. Without
 `--popup`, only `a` and `t` (line A) start a walk. It runs on the Apple GPU.

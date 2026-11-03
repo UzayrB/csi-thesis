@@ -124,7 +124,7 @@ def main(argv=None) -> int:
     ap.add_argument("--speed", type=float, default=None, help="tracking --stream: the playback speed (default 1)")
     ap.add_argument("--screen", default=None, help="tracking --stream: record the screen in this folder")
     ap.add_argument("--no-focus-return", action="store_true",
-                    help="identification: do not give the keyboard back to the Terminal after a click on the map")
+                    help="identification: do not give the keyboard to the Terminal at Done, nor the window back after SPACE")
     a = ap.parse_args(argv)
     if a.stream and not os.path.isdir(os.path.join(REPO_ROOT, "data")):
         raise SystemExit("REFUSED: --stream needs the recordings in data/")

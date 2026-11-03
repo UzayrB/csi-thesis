@@ -274,7 +274,7 @@ def main(argv=None) -> int:
     i.add_argument("--device", default=None, choices=("cpu", "mps"))
     i.add_argument("--popup", action="store_true", help="pick each walk's path on a pop-up map of the twelve paths")
     i.add_argument("--no-focus-return", action="store_true",
-                   help="with --popup: do not give the keyboard back to the Terminal after a click")
+                   help="with --popup: do not give the keyboard to the Terminal at Done, nor the window back after SPACE")
     a = ap.parse_args(argv)
     if a.cmd == "ports":
         from pipeline.live.RunLive.boards_run import identify as find_boards, mapping_by_mac
